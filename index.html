@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kana — D&amp;D 5e Campaign Plotter</title>
+  <title>Kana Campaign Plotter</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -79,6 +79,24 @@
 
     <aside id="inspector" class="inspector" aria-label="Inspector"></aside>
   </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <div id="export-dialog" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="export-title">
+      <div class="modal-head">
+        <h2 id="export-title">Export</h2>
+        <span id="export-filename" class="muted"></span>
+        <button id="export-close" aria-label="Close">×</button>
+      </div>
+      <textarea id="export-text" readonly spellcheck="false" aria-label="Exported text"></textarea>
+      <div class="modal-actions">
+        <button id="export-copy">Copy to clipboard</button>
+        <button id="export-download">Download file</button>
+      </div>
+      <p class="hint">To restore a JSON export later, paste it into a <code>.json</code> file and use Campaign → Import JSON.</p>
+    </div>
+  </div>
 
   <footer class="statusbar">
     <span id="status-counts"></span>

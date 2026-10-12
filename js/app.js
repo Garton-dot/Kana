@@ -816,6 +816,7 @@
     const mod = ev.ctrlKey || ev.metaKey;
     if (ev.key === 'Escape') {
       closeContextMenu();
+      closeExport();
       $('#file-menu').hidden = true;
       if (document.activeElement === searchInput) {
         searchInput.value = '';
@@ -1261,21 +1262,21 @@
     fileMenu.hidden = true;
     switch (action) {
       case 'new':
-        if (campaign.nodes.length && !confirm('Start a new campaign? (You can undo this.)')) return;
         replaceCampaign(Model.createCampaign(), true);
+        toast('Started a new campaign.', true);
         break;
       case 'sample':
-        if (campaign.nodes.length && !confirm('Replace the board with the sample campaign? (You can undo this.)')) return;
         replaceCampaign(buildSample(Model), true);
+        toast('Loaded the sample campaign.', true);
         break;
       case 'import':
         $('#import-file').click();
         break;
       case 'export-json':
-        download(slug(campaign.name) + '.json', JSON.stringify(campaign, null, 2), 'application/json');
+        openExport('Export JSON', slug(campaign.name) + '.json', JSON.stringify(campaign, null, 2), 'application/json');
         break;
       case 'export-md':
-        download(slug(campaign.name) + '.md', toMarkdown(), 'text/markdown');
+        openExport('Export Markdown outline', slug(campaign.name) + '.md', toMarkdown(), 'text/markdown');
         break;
     }
   });
@@ -1287,10 +1288,49 @@
     try {
       const next = Model.normalizeCampaign(JSON.parse(await file.text()));
       replaceCampaign(next, true);
+      toast('Imported "' + next.name + '".', true);
     } catch (err) {
-      alert('Could not import that file: ' + err.message);
+      toast('Could not import that file. ' + err.message + ' Choose a JSON file exported from Kana.');
     }
   });
+
+  // ---------- toast & export dialog (in-page, so they work where native dialogs are blocked) ----------
+  let toastTimer = null;
+  function toast(message, withUndo) {
+    const el = $('#toast');
+    el.replaceChildren(h('span', null, message),
+      withUndo ? h('button', { onclick: () => { undo(); el.hidden = true; } }, 'Undo') : null);
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
+  }
+
+  function openExport(title, filename, text, type) {
+    const dialog = $('#export-dialog');
+    const area = $('#export-text');
+    $('#export-title').textContent = title;
+    $('#export-filename').textContent = filename;
+    area.value = text;
+    $('#export-copy').onclick = () => {
+      const done = () => { $('#export-copy').textContent = 'Copied'; };
+      const fallback = () => { area.focus(); area.select(); $('#export-copy').textContent = 'Press Ctrl+C to copy'; };
+      try {
+        navigator.clipboard.writeText(text).then(done, fallback);
+      } catch (err) {
+        fallback();
+      }
+    };
+    $('#export-download').onclick = () => download(filename, text, type);
+    $('#export-copy').textContent = 'Copy to clipboard';
+    dialog.hidden = false;
+    area.scrollTop = 0;
+  }
+
+  function closeExport() {
+    $('#export-dialog').hidden = true;
+  }
+  $('#export-close').addEventListener('click', closeExport);
+  $('#export-dialog').addEventListener('click', (e) => { if (e.target.id === 'export-dialog') closeExport(); });
 
   function slug(s) {
     return (s || 'campaign').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'campaign';
