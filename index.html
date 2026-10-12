@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kana — D&amp;D 5e Campaign Plotter</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⚜ Kana</div>
+    <input id="campaign-name" class="campaign-name" aria-label="Campaign name" spellcheck="false">
+    <div class="party" title="Party used for encounter difficulty">
+      <label>Party <input id="party-size" type="number" min="1" max="12"></label>
+      <label>Lv <input id="party-level" type="number" min="1" max="20"></label>
+    </div>
+    <div class="spacer"></div>
+    <input id="search" class="search" type="search" placeholder="Search nodes…  (/)" aria-label="Search nodes">
+    <div class="btn-group">
+      <button id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
+      <button id="btn-redo" title="Redo (Ctrl+Shift+Z)">↷</button>
+    </div>
+    <div class="btn-group">
+      <button id="btn-layout" title="Arrange nodes by plot order">Auto-layout</button>
+      <button id="btn-fit" title="Fit everything in view (F)">Fit</button>
+    </div>
+    <div class="menu">
+      <button id="btn-file">Campaign ▾</button>
+      <div class="menu-list" id="file-menu" hidden>
+        <button data-action="new">New campaign</button>
+        <button data-action="sample">Load sample campaign</button>
+        <hr>
+        <button data-action="import">Import JSON…</button>
+        <button data-action="export-json">Export JSON</button>
+        <button data-action="export-md">Export Markdown outline</button>
+      </div>
+    </div>
+    <input id="import-file" type="file" accept="application/json,.json" hidden>
+  </header>
+
+  <main class="layout">
+    <aside class="palette" aria-label="Node palette">
+      <h2>Add node</h2>
+      <p class="hint">Click to add, or drag onto the board.</p>
+      <div id="palette-list"></div>
+      <h2>Show</h2>
+      <div id="filter-list"></div>
+      <label class="toggle"><input type="checkbox" id="focus-thread" checked> Highlight plot thread</label>
+    </aside>
+
+    <section id="viewport" class="viewport" tabindex="0" aria-label="Campaign board">
+      <div id="world" class="world">
+        <svg id="edges" class="edges" aria-hidden="true">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrow-head"></path>
+            </marker>
+            <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrow-head active"></path>
+            </marker>
+          </defs>
+          <g id="edge-layer"></g>
+          <path id="draft-edge" class="edge draft" d=""></path>
+        </svg>
+        <div id="node-layer"></div>
+      </div>
+      <div id="marquee" class="marquee" hidden></div>
+      <div id="empty-state" class="empty-state" hidden>
+        <p>Your campaign board is empty.</p>
+        <p>Add a node from the left, double-click the board, or load the sample campaign.</p>
+      </div>
+      <div id="context-menu" class="context-menu" hidden></div>
+      <div class="zoom-controls">
+        <button id="zoom-out" title="Zoom out">−</button>
+        <span id="zoom-label">100%</span>
+        <button id="zoom-in" title="Zoom in">+</button>
+      </div>
+    </section>
+
+    <aside id="inspector" class="inspector" aria-label="Inspector"></aside>
+  </main>
+
+  <footer class="statusbar">
+    <span id="status-counts"></span>
+    <span class="hint">Drag ● to link · Shift-drag board to box-select · Double-click board to add · Del to remove · Ctrl+D duplicate</span>
+    <span id="status-save"></span>
+  </footer>
+
+  <script src="js/rules.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/sample.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

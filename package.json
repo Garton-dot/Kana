@@ -1,0 +1,11 @@
+{
+  "name": "kana",
+  "version": "0.1.0",
+  "description": "Node-based campaign plotter for D&D 5e",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT"
+}
