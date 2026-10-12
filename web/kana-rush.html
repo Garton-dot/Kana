@@ -1,0 +1,997 @@
+<title>Kana Rush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
+<style>
+/* Layout: one phone-width column, a board-game path of units, a fixed tab bar; quiz and results take the whole screen. */
+:root {
+  --bg: #FFF7F9; --surface: #FFFFFF; --sunk: #F6E9EF; --ink: #261A2B; --muted: #7C6A7A; --line: #EEDCE5;
+  --accent: #E2366F; --accent-deep: #B81E55; --indigo: #4B4FD8; --gold: #D99400; --flame: #EE6510;
+  --good: #16955A; --bad: #D33642; --ice: #1C93C9; --on-accent: #FFFFFF;
+  --shadow: 0 2px 0 rgba(38,26,43,.08), 0 8px 24px rgba(226,54,111,.08);
+  --f-ui: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  --f-kana: "Klee One", "Hiragino Mincho ProN", "Yu Mincho", serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15111F; --surface: #211B30; --sunk: #2B2440; --ink: #F4EEF7; --muted: #ADA2BE; --line: #362D4C;
+  --accent: #FF5C8F; --accent-deep: #D93A6E; --indigo: #9497FF; --gold: #FFC23D; --flame: #FF8C42;
+  --good: #3FCB86; --bad: #FF6B74; --ice: #5CC8F5; --on-accent: #FFFFFF;
+  --shadow: 0 2px 0 rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.25); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #15111F; --surface: #211B30; --sunk: #2B2440; --ink: #F4EEF7; --muted: #ADA2BE; --line: #362D4C;
+  --accent: #FF5C8F; --accent-deep: #D93A6E; --indigo: #9497FF; --gold: #FFC23D; --flame: #FF8C42;
+  --good: #3FCB86; --bad: #FF6B74; --ice: #5CC8F5; --on-accent: #FFFFFF;
+  --shadow: 0 2px 0 rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.25); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 16px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.kana { font-family: var(--f-kana); font-weight: 600; }
+
+#app { max-width: 520px; margin: 0 auto; min-height: 100%; padding-inline: 16px; }
+.page { padding-block: 16px 104px; display: grid; gap: 16px; }
+
+/* Header */
+.hdr { display: flex; align-items: center; gap: 12px; }
+.lvl { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--sunk) 0); }
+.lvl span { width: 42px; height: 42px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-weight: 900; font-size: 18px; }
+.hdr-mid { flex: 1; min-width: 0; }
+.hdr-mid b { font-size: 15px; }
+.hdr-mid small { color: var(--muted); font-size: 12px; display: block; }
+.bar { height: 10px; border-radius: 99px; background: var(--sunk); overflow: hidden; }
+.bar i { display: block; height: 100%; width: calc(var(--p) * 1%); background: var(--accent); border-radius: inherit; transition: width .4s ease; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border-radius: 99px; font-weight: 700; font-size: 14px;
+  color: var(--c, var(--muted)); background: color-mix(in srgb, var(--c, var(--muted)) 14%, transparent); white-space: nowrap; }
+
+/* Daily goal */
+.goal { display: flex; align-items: center; gap: 16px; background: var(--surface); border-radius: 22px; padding: 16px; box-shadow: var(--shadow); }
+.ring { --size: 64px; width: var(--size); height: var(--size); border-radius: 50%; flex: none; display: grid; place-items: center;
+  background: conic-gradient(var(--c) calc(var(--p) * 1%), color-mix(in srgb, var(--c) 15%, transparent) 0); }
+.ring > span { width: calc(var(--size) - 16px); height: calc(var(--size) - 16px); border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-size: 20px; }
+.goal h3, .mode h3 { margin: 0; font-size: 16px; }
+.goal p { margin: 0; color: var(--muted); }
+.goal em { font-style: normal; font-size: 13px; font-weight: 700; color: var(--c); }
+
+/* Continue */
+.go { display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; padding: 20px 22px; border-radius: 26px; color: var(--on-accent);
+  background: linear-gradient(120deg, var(--accent), var(--accent-deep)); box-shadow: 0 6px 0 color-mix(in srgb, var(--accent-deep) 70%, black); animation: breathe 2.2s ease-in-out infinite; }
+.go:active { transform: translateY(4px); box-shadow: 0 2px 0 color-mix(in srgb, var(--accent-deep) 70%, black); }
+.go div { flex: 1; min-width: 0; }
+.go small { letter-spacing: .14em; font-weight: 700; font-size: 12px; opacity: .85; }
+.go strong { display: block; font-size: 22px; font-weight: 900; line-height: 1.2; }
+.go .kana { font-size: 17px; opacity: .92; }
+.go .arrow { font-size: 30px; }
+@keyframes breathe { 50% { transform: scale(1.018); } }
+
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mode { position: relative; text-align: left; padding: 16px; border-radius: 22px; background: color-mix(in srgb, var(--c) 12%, var(--surface)); }
+.mode[disabled] { opacity: .5; cursor: default; }
+.mode .ico { font-size: 26px; }
+.mode h3 { color: var(--c); }
+.mode p { margin: 0; font-size: 13px; color: var(--muted); }
+.badge { position: absolute; top: 12px; right: 12px; background: var(--bad); color: #fff; border-radius: 99px; font-size: 12px; font-weight: 900; padding: 1px 8px; }
+
+.seg { display: flex; padding: 4px; border-radius: 99px; background: var(--sunk); }
+.seg button { flex: 1; padding: 10px 4px; border-radius: 99px; font-weight: 700; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+/* Unit path */
+.path { display: grid; gap: 6px; position: relative; }
+.unit { display: flex; align-items: center; gap: 14px; text-align: left; padding: 6px 8px 6px calc(8px + var(--x)); border-radius: 22px; }
+.unit:not([disabled]):hover { background: var(--sunk); }
+.unit[disabled] { cursor: default; }
+.node { width: 66px; height: 66px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 30px; color: #fff;
+  background: var(--c); box-shadow: 0 5px 0 color-mix(in srgb, var(--c) 65%, black); }
+.unit.next .node { outline: 4px solid var(--gold); outline-offset: 4px; animation: bob 1.6s ease-in-out infinite; }
+.unit[disabled] .node { box-shadow: none; font-size: 22px; }
+@keyframes bob { 50% { transform: translateY(-4px); } }
+.unit-txt { min-width: 0; }
+.unit-txt b { display: block; }
+.unit-txt .sub { color: var(--muted); font-size: 15px; }
+.unit-txt .meta { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+.unit[disabled] .unit-txt { opacity: .5; }
+.stars { letter-spacing: 1px; color: var(--line); }
+.stars b { color: var(--gold); font-weight: 400; }
+
+/* Tab bar */
+.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 6px 16px calc(6px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; }
+.tabs-in { display: flex; width: 100%; max-width: 488px; }
+.tabs button { flex: 1; display: grid; justify-items: center; gap: 0; padding: 6px; border-radius: 16px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.tabs button span { font-size: 22px; line-height: 1.2; }
+.tabs button[aria-current="page"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+/* Quiz */
+.quiz { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; padding-block: 12px 16px; }
+.qtop { display: flex; align-items: center; gap: 10px; }
+.x { font-size: 22px; color: var(--muted); width: 40px; height: 40px; border-radius: 50%; }
+.x:hover { background: var(--sunk); }
+.qtop .bar { flex: 1; height: 14px; }
+.qtop .bar i { background: var(--c, var(--good)); }
+.combo { height: 38px; display: grid; place-items: center; }
+.combo .pill { animation: pop .3s ease; }
+@keyframes pop { 0% { transform: scale(1.4); } 100% { transform: scale(1); } }
+.stage { flex: 1; display: flex; flex-direction: column; animation: slidein .28s ease; }
+@keyframes slidein { from { opacity: 0; transform: translateX(28px); } }
+.instr { color: var(--muted); font-weight: 700; margin: 0; }
+.prompt { flex: 1; display: grid; place-items: center; text-align: center; min-height: 180px; padding-block: 8px; }
+.prompt button { display: grid; justify-items: center; }
+.prompt .big { font-size: 112px; line-height: 1.1; }
+.prompt .mid { font-size: 64px; line-height: 1.15; }
+.prompt .word { font-size: clamp(36px, 12vw, 64px); line-height: 1.2; }
+.prompt .en { font-size: 32px; font-weight: 900; line-height: 1.2; }
+.prompt .hint { color: var(--muted); font-size: 22px; }
+.prompt .say { font-size: 13px; color: var(--muted); }
+.shake { animation: shake .35s ease; }
+@keyframes shake { 20% { transform: translateX(-18px); } 40% { transform: translateX(16px); } 60% { transform: translateX(-10px); } 80% { transform: translateX(6px); } }
+.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.opts.wide { grid-template-columns: 1fr; }
+.opt { min-height: 74px; padding: 10px; border-radius: 18px; background: var(--surface); border: 2px solid var(--line); box-shadow: 0 4px 0 var(--line);
+  font-weight: 700; font-size: 20px; text-align: center; overflow-wrap: anywhere; }
+.opts.wide .opt { min-height: 58px; }
+.opt.jp { font-size: 34px; }
+.opt.jp.long { font-size: 24px; }
+.opt:not([disabled]):active { transform: translateY(3px); box-shadow: 0 1px 0 var(--line); }
+.opt.ok { border-color: var(--good); background: color-mix(in srgb, var(--good) 16%, var(--surface)); box-shadow: 0 4px 0 var(--good); }
+.opt.no { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, var(--surface)); box-shadow: 0 4px 0 var(--bad); }
+.opt.dim { opacity: .45; }
+.opt[disabled] { cursor: default; }
+.spacer { height: 150px; flex: none; }
+
+.teach { flex: 1; display: grid; place-items: center; align-content: center; gap: 14px; text-align: center; }
+.card { background: var(--surface); border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 32px; padding: 26px 34px; box-shadow: var(--shadow); display: grid; justify-items: center; max-width: 100%; }
+.card .big { font-size: 128px; line-height: 1.1; }
+.card .word { font-size: clamp(40px, 13vw, 72px); line-height: 1.2; }
+.card .kanji { font-size: 26px; color: var(--muted); }
+.card .ro { font-size: 34px; font-weight: 900; color: var(--accent); }
+.card .mean { font-size: 21px; }
+.cta { width: 100%; min-height: 58px; border-radius: 18px; font-size: 18px; font-weight: 900; color: var(--on-accent); background: var(--c, var(--accent));
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--c, var(--accent)) 65%, black); }
+.cta:active { transform: translateY(3px); box-shadow: 0 2px 0 color-mix(in srgb, var(--c, var(--accent)) 65%, black); }
+.ghost { width: 100%; min-height: 52px; border-radius: 18px; font-weight: 700; border: 2px solid var(--line); }
+
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; animation: up .22s ease; }
+.sheet-in { max-width: 520px; margin: 0 auto; padding: 20px 20px calc(20px + env(safe-area-inset-bottom, 0px)); border-radius: 28px 28px 0 0;
+  background: color-mix(in srgb, var(--c) 14%, var(--surface)); border-top: 2px solid color-mix(in srgb, var(--c) 40%, transparent); display: grid; gap: 6px; }
+.sheet h3 { margin: 0; color: var(--c); font-size: 25px; font-weight: 900; display: flex; justify-content: space-between; gap: 8px; }
+.sheet h3 span { color: var(--gold); }
+.sheet p { margin: 0; color: var(--c); font-weight: 700; }
+.sheet p.soft { color: var(--muted); font-weight: 500; font-size: 14px; }
+@keyframes up { from { transform: translateY(100%); } }
+
+/* Results */
+.res { padding-block: 32px 32px; display: grid; gap: 16px; justify-items: center; text-align: center; }
+.res .hero { font-size: 72px; line-height: 1; }
+.res h1 { margin: 0; font-size: 32px; font-weight: 900; text-wrap: balance; }
+.res .from { color: var(--muted); margin-top: -10px; }
+.bigstars { font-size: 60px; letter-spacing: 6px; color: var(--line); }
+.bigstars b { display: inline-block; color: var(--gold); font-weight: 400; animation: starpop .5s cubic-bezier(.3,1.8,.5,1) both; }
+@keyframes starpop { from { transform: scale(0) rotate(-40deg); } }
+.xpbig { font-size: 46px; font-weight: 900; color: var(--gold); }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
+.tile { padding: 14px 6px; border-radius: 18px; background: color-mix(in srgb, var(--c) 12%, var(--surface)); }
+.tile b { display: block; color: var(--c); font-size: 22px; font-weight: 900; }
+.tile small { color: var(--muted); font-size: 12px; }
+.rewards { display: grid; gap: 8px; width: 100%; }
+.reward { display: flex; gap: 12px; align-items: center; text-align: left; padding: 12px 14px; border-radius: 14px; font-weight: 700;
+  color: var(--c); background: color-mix(in srgb, var(--c) 12%, var(--surface)); animation: slidein .4s ease both; }
+.reward span { font-size: 22px; }
+.res .btns { display: grid; gap: 10px; width: 100%; margin-top: 8px; }
+.learned { color: var(--muted); }
+#confetti { position: fixed; inset: 0; pointer-events: none; z-index: 10; width: 100%; height: 100%; }
+
+/* Chart */
+h2.title { margin: 0; font-size: 28px; font-weight: 900; }
+.lead { margin: -8px 0 0; color: var(--muted); }
+.grp h3 { margin: 6px 0 8px; font-size: 16px; }
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.grid.combo3 { grid-template-columns: repeat(3, 1fr); }
+.cell { aspect-ratio: .9; max-width: 100%; border-radius: 12px; display: grid; place-content: center; text-align: center; background: var(--m); }
+.grid.combo3 .cell { aspect-ratio: 1.6; }
+.cell .kana { font-size: 26px; line-height: 1.1; }
+.cell small { color: var(--muted); font-size: 12px; }
+.words { display: grid; gap: 6px; }
+.wrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; text-align: left; padding: 10px 14px; border-radius: 12px; background: var(--m); }
+.wrow > div { min-width: 0; }
+.wrow .kana { font-size: 20px; }
+.wrow small { color: var(--muted); display: block; }
+.dots { display: flex; gap: 3px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.dots i.on { background: var(--accent); }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--m); margin-right: 5px; vertical-align: -1px; }
+
+/* Profile */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat { background: var(--surface); border-radius: 16px; padding: 14px; box-shadow: var(--shadow); }
+.stat b { font-size: 20px; font-weight: 900; display: block; }
+.stat small { color: var(--muted); font-size: 12px; }
+.goals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.goals button { padding: 10px 4px; border-radius: 14px; background: var(--surface); display: grid; box-shadow: var(--shadow); }
+.goals button small { font-size: 12px; color: var(--muted); }
+.goals button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.goals button[aria-pressed="true"] small { color: var(--on-accent); }
+.row { display: flex; gap: 12px; align-items: center; background: var(--surface); border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow); }
+.row > div { flex: 1; min-width: 0; }
+.row small { color: var(--muted); display: block; font-size: 13px; }
+.switch { width: 52px; height: 30px; border-radius: 99px; background: var(--line); position: relative; flex: none; transition: background .2s; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; }
+.switch[aria-checked="true"] { background: var(--good); }
+.switch[aria-checked="true"]::after { transform: translateX(22px); }
+.ach { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 16px; background: var(--surface); }
+.ach.got { background: color-mix(in srgb, var(--gold) 16%, var(--surface)); }
+.ach:not(.got) { opacity: .5; }
+.ach span { font-size: 26px; }
+.ach small { color: var(--muted); display: block; }
+.sec { margin: 8px 0 0; font-size: 20px; font-weight: 900; }
+.danger { color: var(--bad); font-weight: 700; padding: 10px 0; justify-self: start; }
+.confirm { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); border-radius: 16px; padding: 16px; display: grid; gap: 10px; }
+.confirm p { margin: 0; }
+.confirm div { display: flex; gap: 10px; }
+.confirm button { flex: 1; min-height: 46px; border-radius: 14px; font-weight: 700; border: 2px solid var(--line); }
+.confirm .yes { background: var(--bad); color: #fff; border-color: var(--bad); }
+.sync { font-size: 12px; color: var(--muted); text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+
+<div id="app"></div>
+<canvas id="confetti" hidden></canvas>
+
+<script>
+// LOGIC START ─ pure game rules, mirrors the Android engine
+const ROWS = [
+  ["vowels","Vowels",[["あ","a"],["い","i"],["う","u"],["え","e"],["お","o"]]],
+  ["k","K row",[["か","ka"],["き","ki"],["く","ku"],["け","ke"],["こ","ko"]]],
+  ["s","S row",[["さ","sa"],["し","shi"],["す","su"],["せ","se"],["そ","so"]]],
+  ["t","T row",[["た","ta"],["ち","chi"],["つ","tsu"],["て","te"],["と","to"]]],
+  ["n","N row",[["な","na"],["に","ni"],["ぬ","nu"],["ね","ne"],["の","no"]]],
+  ["h","H row",[["は","ha"],["ひ","hi"],["ふ","fu"],["へ","he"],["ほ","ho"]]],
+  ["m","M row",[["ま","ma"],["み","mi"],["む","mu"],["め","me"],["も","mo"]]],
+  ["y","Y row",[["や","ya"],["ゆ","yu"],["よ","yo"]]],
+  ["r","R row",[["ら","ra"],["り","ri"],["る","ru"],["れ","re"],["ろ","ro"]]],
+  ["w","W row + n",[["わ","wa"],["を","wo"],["ん","n"]]],
+  ["g","G (dakuten)",[["が","ga"],["ぎ","gi"],["ぐ","gu"],["げ","ge"],["ご","go"]]],
+  ["z","Z (dakuten)",[["ざ","za"],["じ","ji"],["ず","zu"],["ぜ","ze"],["ぞ","zo"]]],
+  ["d","D (dakuten)",[["だ","da"],["ぢ","ji"],["づ","zu"],["で","de"],["ど","do"]]],
+  ["b","B (dakuten)",[["ば","ba"],["び","bi"],["ぶ","bu"],["べ","be"],["ぼ","bo"]]],
+  ["p","P (handakuten)",[["ぱ","pa"],["ぴ","pi"],["ぷ","pu"],["ぺ","pe"],["ぽ","po"]]],
+  ["y1","Combos I",[["きゃ","kya"],["きゅ","kyu"],["きょ","kyo"],["しゃ","sha"],["しゅ","shu"],["しょ","sho"],["ちゃ","cha"],["ちゅ","chu"],["ちょ","cho"]]],
+  ["y2","Combos II",[["にゃ","nya"],["にゅ","nyu"],["にょ","nyo"],["ひゃ","hya"],["ひゅ","hyu"],["ひょ","hyo"],["みゃ","mya"],["みゅ","myu"],["みょ","myo"],["りゃ","rya"],["りゅ","ryu"],["りょ","ryo"]]],
+  ["y3","Combos III",[["ぎゃ","gya"],["ぎゅ","gyu"],["ぎょ","gyo"],["じゃ","ja"],["じゅ","ju"],["じょ","jo"],["びゃ","bya"],["びゅ","byu"],["びょ","byo"],["ぴゃ","pya"],["ぴゅ","pyu"],["ぴょ","pyo"]]],
+];
+const LESSONS = [
+  ["Lesson 1", "Greetings & people", `
+おはよう|ohayou|good morning
+こんにちは|konnichiwa|hello
+こんばんは|konbanwa|good evening
+さようなら|sayounara|goodbye
+おやすみなさい|oyasuminasai|good night
+ありがとう|arigatou|thank you
+すみません|sumimasen|excuse me / sorry
+はい|hai|yes
+いいえ|iie|no
+はじめまして|hajimemashite|nice to meet you
+よろしく|yoroshiku|pleased to meet you
+わたし|watashi|I / me|私
+なまえ|namae|name|名前
+がくせい|gakusei|student|学生
+せんせい|sensei|teacher|先生
+だいがく|daigaku|university|大学
+ともだち|tomodachi|friend|友達
+にほん|nihon|Japan|日本
+にほんご|nihongo|Japanese language|日本語
+アメリカ|amerika|America
+いち|ichi|one|一
+に|ni|two|二
+さん|san|three|三
+よん|yon|four|四
+ご|go|five|五`],
+  ["Lesson 2", "Things & shopping", `
+これ|kore|this one
+それ|sore|that one
+あれ|are|that one over there
+どれ|dore|which one
+ここ|koko|here
+そこ|soko|there
+いくら|ikura|how much
+ほん|hon|book|本
+かばん|kaban|bag
+くつ|kutsu|shoes|靴
+さいふ|saifu|wallet|財布
+かさ|kasa|umbrella|傘
+とけい|tokei|watch / clock|時計
+ぼうし|boushi|hat|帽子
+じしょ|jisho|dictionary|辞書
+えんぴつ|enpitsu|pencil|鉛筆
+ペン|pen|pen
+みず|mizu|water|水
+おちゃ|ocha|green tea|お茶
+コーヒー|koohii|coffee
+にく|niku|meat|肉
+さかな|sakana|fish|魚
+ひゃく|hyaku|hundred|百
+せん|sen|thousand|千
+えん|en|yen|円`],
+  ["Lesson 3", "Daily life", `
+いく|iku|to go|行く
+かえる|kaeru|to go home|帰る
+くる|kuru|to come|来る
+する|suru|to do
+たべる|taberu|to eat|食べる
+のむ|nomu|to drink|飲む
+みる|miru|to see / watch|見る
+きく|kiku|to listen|聞く
+よむ|yomu|to read|読む
+はなす|hanasu|to speak|話す
+おきる|okiru|to get up|起きる
+ねる|neru|to sleep|寝る
+べんきょう|benkyou|study|勉強
+うち|uchi|home / house|家
+がっこう|gakkou|school|学校
+としょかん|toshokan|library|図書館
+えいが|eiga|movie|映画
+テレビ|terebi|TV
+あさごはん|asagohan|breakfast|朝ご飯
+ばんごはん|bangohan|dinner|晩ご飯
+きょう|kyou|today|今日
+あした|ashita|tomorrow|明日
+まいにち|mainichi|every day|毎日
+あさ|asa|morning|朝
+よる|yoru|night|夜`],
+  ["Lesson 4", "Places & time", `
+ある|aru|to exist (things)
+いる|iru|to exist (people/animals)
+みせ|mise|store|店
+えき|eki|station|駅
+びょういん|byouin|hospital|病院
+こうえん|kouen|park|公園
+レストラン|resutoran|restaurant
+トイレ|toire|toilet
+うえ|ue|on / above|上
+した|shita|under|下
+まえ|mae|in front|前
+うしろ|ushiro|behind|後ろ
+なか|naka|inside|中
+となり|tonari|next to|隣
+みぎ|migi|right|右
+ひだり|hidari|left|左
+きのう|kinou|yesterday|昨日
+じかん|jikan|time / hours|時間
+しゃしん|shashin|photograph|写真
+いぬ|inu|dog|犬
+ねこ|neko|cat|猫
+こども|kodomo|child|子供
+にちようび|nichiyoubi|Sunday|日曜日
+どようび|doyoubi|Saturday|土曜日
+げつようび|getsuyoubi|Monday|月曜日`],
+  ["Lesson 5", "Adjectives & travel", `
+あつい|atsui|hot|暑い
+さむい|samui|cold (weather)|寒い
+おおきい|ookii|big|大きい
+ちいさい|chiisai|small|小さい
+あたらしい|atarashii|new|新しい
+ふるい|furui|old (things)|古い
+たかい|takai|expensive / tall|高い
+やすい|yasui|cheap|安い
+おいしい|oishii|delicious
+おもしろい|omoshiroi|interesting / funny
+たのしい|tanoshii|fun|楽しい
+むずかしい|muzukashii|difficult|難しい
+いそがしい|isogashii|busy|忙しい
+いい|ii|good
+こわい|kowai|scary|怖い
+しずか|shizuka|quiet|静か
+きれい|kirei|beautiful / clean
+げんき|genki|healthy / energetic|元気
+すき|suki|to like|好き
+きらい|kirai|to dislike|嫌い
+ひま|hima|free (time)|暇
+うみ|umi|sea|海
+やま|yama|mountain|山
+てんき|tenki|weather|天気
+りょこう|ryokou|travel|旅行`]
+];
+const TRACKS = {
+  hiragana: { title: "Hiragana", native: "ひらがな" },
+  katakana: { title: "Katakana", native: "カタカナ" },
+  vocab: { title: "Vocabulary", native: "ことば" },
+};
+const toKata = s => [...s].map(c => { const p = c.codePointAt(0); return p >= 0x3041 && p <= 0x3096 ? String.fromCodePoint(p + 0x60) : c; }).join("");
+
+const Course = (() => {
+  const units = [];
+  for (const track of ["hiragana", "katakana"]) {
+    const pre = track === "hiragana" ? "h" : "k";
+    for (const [key, title, chars] of ROWS) {
+      const id = `${pre}-${key}`;
+      const items = chars.map(([h, romaji]) => {
+        const jp = track === "hiragana" ? h : toKata(h);
+        return { id: `${pre}:${jp}`, kind: "kana", jp, romaji, meaning: "", kanji: null, unitId: id };
+      });
+      units.push({ id, track, title, subtitle: items.slice(0, 5).map(i => i.jp).join(" "), items });
+    }
+  }
+  LESSONS.forEach(([title, subtitle, raw], i) => {
+    const id = `v-${i + 1}`;
+    const items = raw.trim().split("\n").map(line => {
+      const [jp, romaji, meaning, kanji] = line.trim().split("|");
+      return { id: `v:${jp}`, kind: "vocab", jp, romaji, meaning, kanji: kanji || null, unitId: id };
+    });
+    units.push({ id, track: "vocab", title, subtitle, items });
+  });
+  const items = units.flatMap(u => u.items);
+  const itemById = new Map(items.map(i => [i.id, i]));
+  const unitById = new Map(units.map(u => [u.id, u]));
+  return {
+    units, items,
+    item: id => itemById.get(id), unit: id => unitById.get(id),
+    unitsOf: t => units.filter(u => u.track === t),
+    itemsOf: t => units.filter(u => u.track === t).flatMap(u => u.items),
+  };
+})();
+
+const MIN = 60000, DAY = 24 * 60 * MIN;
+const Srs = {
+  MAX: 5, MASTERED: 4,
+  INTERVALS: [0, 10 * MIN, DAY, 3 * DAY, 7 * DAY, 21 * DAY],
+  onAnswer(p, correct, now) {
+    p = p || [0, 0, 0, 0]; // [box, due, seen, correct]
+    const box = correct ? Math.min(p[0] + 1, Srs.MAX) : Math.max(p[0] - 2, 0);
+    return [box, now + Srs.INTERVALS[box], p[2] + 1, p[3] + (correct ? 1 : 0)];
+  },
+  isDue: (p, now) => !!p && p[2] > 0 && p[1] <= now,
+};
+
+const Gamify = {
+  BASE: 10, GOAL_BONUS: 20, MAX_FREEZES: 2,
+  mult: c => c >= 20 ? 3 : c >= 10 ? 2 : c >= 5 ? 1.5 : 1,
+  xpFor: c => Math.round(10 * Gamify.mult(c)),
+  xpForLevel: l => 50 * l * (l - 1),
+  level(xp) { let l = 1; while (Gamify.xpForLevel(l + 1) <= xp) l++; return l; },
+  levelProgress(xp) { const l = Gamify.level(xp), s = Gamify.xpForLevel(l); return [xp - s, Gamify.xpForLevel(l + 1) - s]; },
+  stars(c, t) { if (!t) return 0; const a = c / t; return a >= 1 ? 3 : a >= .85 ? 2 : a >= .6 ? 1 : 0; },
+  cheers: ["すごい!", "いいね!", "Nice!", "完璧!", "やった!", "Great!", "Sugoi!", "Keep going!"],
+};
+
+const seen = (s, id) => (s.items[id]?.[2] || 0) > 0;
+const box = (s, id) => s.items[id]?.[0] || 0;
+const trackCleared = (s, t) => Course.unitsOf(t).every(u => (s.unitStars[u.id] || 0) >= 1);
+const ACHIEVEMENTS = [
+  ["FIRST_STEPS", "👣", "First Steps", "Finish your first session", s => s.sessions >= 1],
+  ["COMBO_10", "🔥", "On Fire", "Hit a 10× combo", s => s.bestCombo >= 10],
+  ["COMBO_25", "☄️", "Unstoppable", "Hit a 25× combo", s => s.bestCombo >= 25],
+  ["PERFECT", "💯", "Perfectionist", "Earn 3 stars on a unit", s => Object.values(s.unitStars).some(n => n >= 3)],
+  ["STREAK_3", "📅", "Habit Forming", "Reach a 3-day streak", s => s.bestStreak >= 3],
+  ["STREAK_7", "🗓️", "Week Warrior", "Reach a 7-day streak", s => s.bestStreak >= 7],
+  ["STREAK_30", "🏯", "Shogun", "Reach a 30-day streak", s => s.bestStreak >= 30],
+  ["HIRAGANA_ALL", "🌸", "Hiragana Hero", "Clear every hiragana unit", s => trackCleared(s, "hiragana")],
+  ["KATAKANA_ALL", "⚡", "Katakana King", "Clear every katakana unit", s => trackCleared(s, "katakana")],
+  ["VOCAB_ALL", "📚", "Wordsmith", "Clear lessons 1–5", s => trackCleared(s, "vocab")],
+  ["WORDS_50", "🧠", "Lexicon", "Know 50 words well", s => Course.itemsOf("vocab").filter(i => box(s, i.id) >= 3).length >= 50],
+  ["LIGHTNING_30", "⏱️", "Speed Demon", "Score 30 in Lightning", s => s.lightningBest >= 30],
+  ["LEVEL_10", "👑", "Level 10", "Reach level 10", s => Gamify.level(s.totalXp) >= 10],
+  ["SESSIONS_50", "🎌", "Dedicated", "Complete 50 sessions", s => s.sessions >= 50],
+].map(([key, emoji, title, desc, earned]) => ({ key, emoji, title, desc, earned }));
+
+const freshState = () => ({
+  totalXp: 0, items: {}, unitStars: {}, streak: 0, bestStreak: 0, lastPracticeDay: -1, todayXp: 0, todayDay: -1,
+  dailyGoal: 100, goalClaimedDay: -1, bestCombo: 0, lightningBest: 0, achievements: [], sessions: 0, freezes: 0,
+  sound: true, updatedAt: 0,
+});
+
+const P = {
+  isUnlocked(s, u) { const l = Course.unitsOf(u.track), i = l.indexOf(u); return i <= 0 || (s.unitStars[l[i - 1].id] || 0) >= 1; },
+  seenCount: (s, u) => u.items.filter(i => seen(s, i.id)).length,
+  mastered: (s, items) => items.filter(i => box(s, i.id) >= Srs.MASTERED).length,
+  due: (s, now) => Course.items.filter(i => Srs.isDue(s.items[i.id], now)).sort((a, b) => s.items[a.id][1] - s.items[b.id][1]),
+  unlockedItems: (s, t) => Course.unitsOf(t).filter(u => P.isUnlocked(s, u)).flatMap(u => u.items),
+  seenItems: (s, kind) => Course.items.filter(i => (!kind || i.kind === kind) && seen(s, i.id)),
+  nextUnit(s) {
+    const un = Course.units.filter(u => P.isUnlocked(s, u));
+    return un.find(u => !(s.unitStars[u.id] || 0)) || un.reduce((a, b) => (s.unitStars[b.id] || 0) < (s.unitStars[a.id] || 0) ? b : a, un[0]);
+  },
+  streakNow(s, today) {
+    if (s.lastPracticeDay >= today - 1) return s.streak;
+    if (s.lastPracticeDay === today - 2 && s.freezes > 0) return s.streak;
+    return 0;
+  },
+  todayXp: (s, today) => s.todayDay === today ? s.todayXp : 0,
+  complete(prev, sum, now, today) {
+    const s = structuredClone(prev);
+    for (const [id, ok] of sum.answers) s.items[id] = Srs.onAnswer(s.items[id], ok, now);
+    const last = s.lastPracticeDay;
+    let freezes = s.freezes, streak;
+    if (last === today) streak = s.streak;
+    else if (last === today - 1) streak = s.streak + 1;
+    else if (last === today - 2 && freezes > 0) { freezes--; streak = s.streak + 1; }
+    else streak = 1;
+    const streakUp = last !== today;
+    const earnedFreeze = streakUp && streak % 7 === 0 && freezes < Gamify.MAX_FREEZES;
+    if (earnedFreeze) freezes++;
+
+    let todayXp = P.todayXp(s, today) + sum.xp;
+    const goalBonus = todayXp >= s.dailyGoal && s.goalClaimedDay !== today ? Gamify.GOAL_BONUS : 0;
+    todayXp += goalBonus;
+    const levelBefore = Gamify.level(s.totalXp);
+
+    const unit = sum.unitId ? Course.unit(sum.unitId) : null;
+    let stars = null, unlocked = null;
+    if (unit && sum.mode === "lesson" && P.seenCount(s, unit) === unit.items.length) {
+      stars = Gamify.stars(sum.firstTry, sum.questions);
+      const before = s.unitStars[unit.id] || 0;
+      if (stars > before) s.unitStars[unit.id] = stars;
+      if (!before && stars >= 1) { const l = Course.unitsOf(unit.track); unlocked = l[l.indexOf(unit) + 1] || null; }
+    }
+    const lightning = sum.mode === "lightning" ? sum.firstTry : 0;
+    const newBest = lightning > s.lightningBest;
+
+    Object.assign(s, {
+      totalXp: s.totalXp + sum.xp + goalBonus, todayXp, todayDay: today,
+      goalClaimedDay: goalBonus ? today : s.goalClaimedDay, streak, bestStreak: Math.max(s.bestStreak, streak),
+      lastPracticeDay: today, freezes, bestCombo: Math.max(s.bestCombo, sum.maxCombo),
+      lightningBest: Math.max(s.lightningBest, lightning), sessions: s.sessions + 1,
+    });
+    const newAch = ACHIEVEMENTS.filter(a => !s.achievements.includes(a.key) && a.earned(s));
+    s.achievements = [...s.achievements, ...newAch.map(a => a.key)];
+    const levelAfter = Gamify.level(s.totalXp);
+    return [s, { xp: sum.xp, goalBonus, stars, newAch, levelUp: levelAfter > levelBefore ? levelAfter : null, unlocked, streak, streakUp, earnedFreeze, newBest }];
+  },
+};
+
+const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+
+const Q = {
+  types: it => it.kind === "kana" ? ["k2r", "r2k"] : ["w2m", "m2w"],
+  answer: (it, t) => ({ k2r: it.romaji, r2k: it.jp, w2m: it.meaning, m2w: it.jp })[t],
+  prompt: (it, t) => ({ k2r: it.jp, r2k: it.romaji, w2m: it.jp, m2w: it.meaning })[t],
+  question(item, pool, type = pick(Q.types(item))) {
+    const ans = Q.answer(item, type), pr = Q.prompt(item, type);
+    // A distractor must not also be right (じ and ぢ are both "ji").
+    const ok = o => o.kind === item.kind && o.id !== item.id && Q.answer(o, type) !== ans && Q.prompt(o, type) !== pr;
+    const near = shuffle(pool.filter(ok)).sort((a, b) => (a.unitId === item.unitId ? 0 : 1) - (b.unitId === item.unitId ? 0 : 1));
+    const far = shuffle(Course.items.filter(ok));
+    const distractors = [...new Set([...near, ...far].map(o => Q.answer(o, type)))].slice(0, 3);
+    const options = shuffle([...distractors, ans]);
+    return { item, type, prompt: pr, hint: type === "w2m" ? item.kanji : null, options, correct: options.indexOf(ans), retry: false };
+  },
+  weighted(items, s) {
+    const w = items.map(i => Srs.MAX + 1 - box(s, i.id));
+    let roll = Math.random() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < items.length; i++) { if (roll < w[i]) return items[i]; roll -= w[i]; }
+    return items[items.length - 1];
+  },
+  lesson(unit, s, pool, maxNew = 5, asks = 12) {
+    const steps = [];
+    const fresh = unit.items.filter(i => !seen(s, i.id)).slice(0, maxNew);
+    for (let i = 0; i < fresh.length; i += 2) {
+      const chunk = fresh.slice(i, i + 2);
+      chunk.forEach(it => steps.push({ teach: it }));
+      shuffle(chunk).forEach(it => steps.push({ ask: Q.question(it, pool, Q.types(it)[0]) }));
+    }
+    const practice = [...unit.items.filter(i => seen(s, i.id)), ...fresh];
+    let prev = fresh[fresh.length - 1];
+    while (steps.filter(x => x.ask).length < asks && practice.length) {
+      const cands = practice.filter(i => i !== prev);
+      const it = Q.weighted(cands.length ? cands : practice, s);
+      steps.push({ ask: Q.question(it, pool) });
+      prev = it;
+    }
+    return steps;
+  },
+  review: (items, poolFor) => shuffle(items).map(it => ({ ask: Q.question(it, poolFor(it)) })),
+  lightning: (items, poolFor, n = 20) => Array.from({ length: n }, () => pick(items)).map(it => ({ ask: Q.question(it, poolFor(it)) })),
+};
+
+function Session(mode, unitId, steps, retry, refill) {
+  const q = [...steps];
+  const S = { mode, unitId, current: q.shift() || null, combo: 0, maxCombo: 0, xp: 0, firstTry: 0, questions: 0, done: 0, answers: [] };
+  S.left = () => q.length;
+  S.progress = () => { const t = S.done + q.length + (S.current ? 1 : 0); return t ? S.done / t : 1; };
+  S.answer = choice => {
+    const qq = S.current.ask, ok = choice === qq.correct;
+    let gained = 0;
+    if (!qq.retry) { S.questions++; S.answers.push([qq.item.id, ok]); }
+    if (ok) { S.combo++; S.maxCombo = Math.max(S.maxCombo, S.combo); gained = Gamify.xpFor(S.combo); S.xp += gained; if (!qq.retry) S.firstTry++; }
+    else { S.combo = 0; if (mode !== "lightning") q.push({ ask: { ...retry(qq.item), retry: true } }); }
+    return { ok, chosen: choice, correct: qq.correct, gained, combo: S.combo };
+  };
+  S.advance = () => { S.done++; if (!q.length && refill) q.push(...refill()); S.current = q.shift() || null; };
+  S.stop = () => { q.length = 0; S.current = null; };
+  S.summary = () => ({ mode, unitId, firstTry: S.firstTry, questions: S.questions, xp: S.xp, maxCombo: S.maxCombo, answers: S.answers });
+  return S;
+}
+// LOGIC END
+
+// ───────────── Storage: this browser, plus the viewer's own claude.ai record when available ─────────────
+const LS_KEY = "kanarush.v1";
+const today = () => { const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset() * MIN) / DAY); };
+function normalize(x) { const s = { ...freshState(), ...(x || {}) }; s.items = s.items || {}; s.unitStars = s.unitStars || {}; s.achievements = s.achievements || []; return s; }
+function loadLocal() { try { const r = localStorage.getItem(LS_KEY); return r ? normalize(JSON.parse(r)) : freshState(); } catch { return freshState(); } }
+let state = loadLocal();
+let remoteRef = null, syncStatus = "local";
+function save() {
+  state.updatedAt = Date.now();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+  if (remoteRef) remoteRef.set({ state }).then(() => { syncStatus = "synced"; }).catch(() => { remoteRef = null; syncStatus = "local"; });
+}
+(async () => {
+  try {
+    if (!window.claude?.use) return;
+    const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+    if (!db || !user) return;
+    const id = await user.id();
+    if (!id) return;
+    const ref = db.collection("data/users/" + id).doc("kana-progress");
+    const snap = await ref.get();
+    const remote = snap.exists ? snap.data()?.state : null;
+    remoteRef = ref; syncStatus = "synced";
+    if (remote && (remote.updatedAt || 0) > (state.updatedAt || 0)) {
+      state = normalize(remote);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+      if (ui.screen === "home") render();
+    } else if (state.sessions > 0) save();
+  } catch { remoteRef = null; syncStatus = "local"; }
+})();
+
+// ───────────── Sound: Japanese voice + tiny chimes ─────────────
+let jaVoice = null;
+function findVoice() { try { const v = speechSynthesis.getVoices(); jaVoice = v.find(x => /^ja/i.test(x.lang)) || null; } catch {} }
+try { findVoice(); speechSynthesis.onvoiceschanged = findVoice; } catch {}
+function speak(text) {
+  if (!state.sound) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ja-JP"; if (jaVoice) u.voice = jaVoice; u.rate = .9;
+    speechSynthesis.speak(u);
+  } catch {}
+}
+let actx = null;
+function chime(ok) {
+  if (!state.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = ok ? [880, 1318.5] : [220, 185];
+    notes.forEach((f, i) => {
+      const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + i * .09;
+      o.type = ok ? "triangle" : "sawtooth"; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(ok ? .18 : .07, t + .015); g.gain.exponentialRampToValueAtTime(.0001, t + .22);
+      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + .25);
+    });
+  } catch {}
+}
+const buzz = ms => { try { navigator.vibrate?.(ms); } catch {} };
+
+// ───────────── UI state & actions ─────────────
+const ui = { screen: "home", tab: "learn", track: "hiragana", session: null, title: "", fb: null, endsAt: null, results: null, confirmReset: false, shakeKey: 0 };
+const LIGHTNING_MS = 60000;
+let timer = null, autoNext = null;
+const app = document.getElementById("app");
+const poolFor = it => P.unlockedItems(state, Course.unit(it.unitId).track);
+
+function begin(session, title, endsAt = null) {
+  ui.session = session; ui.title = title; ui.fb = null; ui.endsAt = endsAt; ui.screen = "quiz";
+  window.scrollTo(0, 0);
+  render(); onStep();
+  if (endsAt) { clearInterval(timer); timer = setInterval(tick, 100); }
+}
+function startLesson(unit) {
+  const pool = P.unlockedItems(state, unit.track);
+  begin(Session("lesson", unit.id, Q.lesson(unit, state, pool), it => Q.question(it, pool)), `${TRACKS[unit.track].native} · ${unit.title}`);
+}
+function startReview() {
+  const due = P.due(state, Date.now()).slice(0, 15);
+  const items = due.length ? due : P.seenItems(state).sort((a, b) => box(state, a.id) - box(state, b.id) || state.items[a.id][1] - state.items[b.id][1]).slice(0, 12);
+  if (!items.length) return;
+  begin(Session("review", null, Q.review(items, poolFor), it => Q.question(it, poolFor(it))), due.length ? "Review" : "Weak spots");
+}
+function startLightning() {
+  const k = P.seenItems(state, "kana");
+  const items = k.length >= 8 ? k : P.unlockedItems(state, "hiragana");
+  begin(Session("lightning", null, Q.lightning(items, poolFor), it => Q.question(it, poolFor(it)), () => Q.lightning(items, poolFor)), "Lightning round", Date.now() + LIGHTNING_MS);
+}
+function onStep() {
+  const st = ui.session?.current;
+  if (!st) return;
+  if (st.teach) speak(st.teach.jp);
+  else if (ui.session.mode !== "lightning" && (st.ask.type === "k2r" || st.ask.type === "w2m")) speak(st.ask.item.jp);
+}
+function answer(i) {
+  const s = ui.session;
+  if (!s || ui.fb || !s.current?.ask) return;
+  ui.fb = s.answer(i);
+  const q = s.current.ask, light = s.mode === "lightning";
+  chime(ui.fb.ok);
+  if (!ui.fb.ok) { buzz(120); ui.shakeKey++; }
+  if (!light) speak(q.item.jp);
+  render();
+  clearTimeout(autoNext);
+  if (ui.fb.ok || light) autoNext = setTimeout(next, ui.fb.ok ? (light ? 250 : 800) : 700);
+}
+function next() {
+  const s = ui.session;
+  if (!s || (s.current?.ask && !ui.fb)) return;
+  clearTimeout(autoNext);
+  ui.fb = null; s.advance();
+  if (!s.current) finish(); else { render(); onStep(); }
+}
+function tick() {
+  const left = ui.endsAt - Date.now();
+  const bar = document.getElementById("tbar"), lbl = document.getElementById("tleft");
+  if (bar) { bar.style.setProperty("--p", Math.max(0, left / LIGHTNING_MS * 100)); bar.style.setProperty("--c", left < 12000 ? "var(--bad)" : "var(--flame)"); }
+  if (lbl) lbl.textContent = `⏱ ${Math.max(0, Math.ceil(left / 1000))}s`;
+  if (left <= 0) { ui.session?.stop(); finish(); }
+}
+function quit() { clearInterval(timer); clearTimeout(autoNext); ui.session = null; ui.fb = null; ui.screen = "home"; render(); }
+function finish() {
+  clearInterval(timer); clearTimeout(autoNext);
+  const s = ui.session; if (!s) return;
+  const sum = s.summary();
+  const [ns, rw] = P.complete(state, sum, Date.now(), today());
+  state = ns; save();
+  ui.results = { sum, rw, title: ui.title, unit: s.unitId ? Course.unit(s.unitId) : null };
+  ui.session = null; ui.fb = null; ui.screen = "results";
+  window.scrollTo(0, 0);
+  render();
+}
+
+// ───────────── Rendering ─────────────
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const starStr = n => `<span class="stars" aria-label="${n} of 3 stars">${[0, 1, 2].map(i => i < n ? "<b>★</b>" : "★").join("")}</span>`;
+const fmtMult = m => `${m}×`;
+
+function render() {
+  if (ui.screen === "quiz") return renderQuiz();
+  if (ui.screen === "results") return renderResults();
+  const body = ui.tab === "learn" ? homeHtml() : ui.tab === "chart" ? chartHtml() : profileHtml();
+  app.innerHTML = `<main class="page">${body}</main>
+  <nav class="tabs" aria-label="Sections"><div class="tabs-in">
+    ${[["learn", "🏠", "Learn"], ["chart", "あ", "Chart"], ["profile", "🏆", "Profile"]].map(([k, i, l]) =>
+      `<button data-act="tab" data-v="${k}" ${ui.tab === k ? 'aria-current="page"' : ""}><span>${i}</span>${l}</button>`).join("")}
+  </div></nav>`;
+}
+
+function trackSeg() {
+  return `<div class="seg" role="group" aria-label="Track">${Object.entries(TRACKS).map(([k, t]) =>
+    `<button data-act="track" data-v="${k}" aria-pressed="${ui.track === k}" class="kana">${t.native}</button>`).join("")}</div>`;
+}
+
+function homeHtml() {
+  const s = state, t = today();
+  const lvl = Gamify.level(s.totalXp), [inL, span] = Gamify.levelProgress(s.totalXp);
+  const streak = P.streakNow(s, t), practiced = s.lastPracticeDay === t;
+  const txp = P.todayXp(s, t), claimed = s.goalClaimedDay === t;
+  const next = P.nextUnit(s);
+  const due = P.due(s, Date.now()).length, canReview = P.seenItems(s).length > 0;
+  const zig = [0, 30, 60, 30];
+  const units = Course.unitsOf(ui.track);
+  return `
+  <header class="hdr">
+    <div class="lvl" style="--p:${inL / span * 100}"><span class="num">${lvl}</span></div>
+    <div class="hdr-mid"><b>Level ${lvl}</b><div class="bar" style="--p:${inL / span * 100}"><i></i></div><small class="num">${inL} / ${span} XP to level ${lvl + 1}</small></div>
+    <div class="pills"><span class="pill num" style="--c:${practiced ? "var(--flame)" : "var(--muted)"}" title="Day streak">🔥 ${streak}</span>
+    ${s.freezes ? `<span class="pill num" style="--c:var(--ice)" title="Streak freezes">❄️ ${s.freezes}</span>` : ""}</div>
+  </header>
+  <section class="goal" style="--c:${claimed ? "var(--good)" : "var(--gold)"}">
+    <div class="ring" style="--p:${Math.min(100, txp / s.dailyGoal * 100)}"><span>${claimed ? "✓" : "🎯"}</span></div>
+    <div><h3>Daily goal</h3><p class="num">${Math.min(txp, s.dailyGoal)} / ${s.dailyGoal} XP today</p>
+    <em>${claimed ? "Chest opened. Come back tomorrow 🎉" : `🎁 Hit it for a +${Gamify.GOAL_BONUS} XP chest`}</em></div>
+  </section>
+  <button class="go" data-act="lesson" data-v="${next.id}">
+    <div><small>CONTINUE</small><strong>${TRACKS[next.track].title} · ${esc(next.title)}</strong><span class="kana">${esc(next.subtitle)}</span></div>
+    <span class="arrow" aria-hidden="true">▶</span>
+  </button>
+  <div class="modes">
+    <button class="mode" style="--c:var(--indigo)" data-act="review" ${canReview ? "" : "disabled"}>
+      ${due ? `<span class="badge num">${due}</span>` : ""}<div class="ico">🔁</div><h3>Review</h3>
+      <p>${due ? `${due} due now` : canReview ? "Drill your weak spots" : "Learn something first"}</p></button>
+    <button class="mode" style="--c:var(--flame)" data-act="lightning"><div class="ico">⚡</div><h3>Lightning</h3><p class="num">60 seconds · best ${s.lightningBest}</p></button>
+  </div>
+  ${trackSeg()}
+  <div class="path">${units.map((u, i) => {
+    const st = s.unitStars[u.id] || 0, open = P.isUnlocked(s, u), sc = P.seenCount(s, u);
+    const c = !open ? "color-mix(in srgb, var(--muted) 40%, transparent)" : st === 3 ? "var(--gold)" : st ? "var(--good)" : "var(--accent)";
+    return `<button class="unit ${u === next ? "next" : ""}" style="--x:${zig[i % 4]}px;--c:${c}" data-act="lesson" data-v="${u.id}" ${open ? "" : "disabled"}>
+      <span class="node kana">${open ? esc(u.items[0].jp) : "🔒"}</span>
+      <span class="unit-txt"><b>${esc(u.title)}</b><span class="sub kana">${esc(u.subtitle)}</span>
+      <span class="meta">${starStr(st)}<span class="num">${sc < u.items.length ? `${sc}/${u.items.length} learned` : `${P.mastered(s, u.items)}/${u.items.length} mastered`}</span></span></span>
+    </button>`;
+  }).join("")}</div>
+  <p class="sync">${syncStatus === "synced" ? "Progress saved to your account" : "Progress saved in this browser"}</p>`;
+}
+
+function renderQuiz() {
+  const s = ui.session, st = s.current, fb = ui.fb, light = s.mode === "lightning";
+  let top;
+  if (light) {
+    const left = ui.endsAt - Date.now();
+    top = `<div class="bar" id="tbar" style="--p:${left / LIGHTNING_MS * 100};--c:var(--flame)"><i></i></div>
+      <span class="pill num" id="tleft" style="--c:var(--flame)">⏱ ${Math.ceil(left / 1000)}s</span><span class="pill num" style="--c:var(--good)">✓ ${s.firstTry}</span>`;
+  } else {
+    top = `<div class="bar" style="--p:${s.progress() * 100}"><i></i></div><span class="pill num" style="--c:var(--gold)">⚡ ${s.xp}</span>`;
+  }
+  const m = Gamify.mult(s.combo);
+  const combo = s.combo >= 3 ? `<span class="pill num" style="--c:${s.combo >= 10 ? "var(--bad)" : "var(--flame)"}" key="${s.combo}">🔥 ${s.combo} ${m > 1 ? `combo · ${fmtMult(m)} XP` : "in a row"}</span>` : "";
+  let stage = "";
+  if (st?.teach) {
+    const it = st.teach;
+    stage = `<div class="teach"><span class="pill" style="--c:var(--accent)">✨ NEW</span>
+      <button class="card" data-act="speak" data-v="${esc(it.jp)}" aria-label="Hear ${esc(it.jp)}">
+        <span class="kana ${it.kind === "kana" ? "big" : "word"}">${esc(it.jp)}</span>
+        ${it.kanji ? `<span class="kanji kana">${esc(it.kanji)}</span>` : ""}
+        <span class="ro">${esc(it.romaji)}</span>${it.meaning ? `<span class="mean">${esc(it.meaning)}</span>` : ""}
+      </button><span class="say" style="color:var(--muted)">🔊 Tap the card to hear it</span></div>
+      <button class="cta" data-act="next">Got it!</button>`;
+  } else if (st?.ask) {
+    const q = st.ask, jpPrompt = q.type === "k2r" || q.type === "w2m", jpOpts = !jpPrompt;
+    const instr = { k2r: "What sound is this?", r2k: "Pick the kana", w2m: "What does this mean?", m2w: "How do you say this?" }[q.type];
+    const cls = { k2r: "kana big", w2m: "kana word", r2k: "mid", m2w: "en" }[q.type];
+    const wide = q.options.some(o => o.length > (jpOpts ? 4 : 7));
+    const promptInner = `<span class="${cls}">${esc(q.prompt)}</span>${q.hint ? `<span class="hint kana">${esc(q.hint)}</span>` : ""}${jpPrompt && !light ? `<span class="say">🔊 tap to hear</span>` : ""}`;
+    stage = `<p class="instr">${instr}${q.retry ? " · try again" : ""}</p>
+      <div class="prompt ${fb && !fb.ok ? "shake" : ""}">${jpPrompt ? `<button data-act="speak" data-v="${esc(q.item.jp)}">${promptInner}</button>` : `<div>${promptInner}</div>`}</div>
+      <div class="opts ${wide ? "wide" : ""}">${q.options.map((o, i) => {
+        const state2 = !fb ? "" : i === q.correct ? "ok" : i === fb.chosen ? "no" : "dim";
+        return `<button class="opt ${jpOpts ? "jp kana" : ""} ${jpOpts && o.length > 2 ? "long" : ""} ${state2}" data-act="ans" data-v="${i}" ${fb ? "disabled" : ""}>${esc(o)}</button>`;
+      }).join("")}</div><div class="spacer"></div>`;
+  }
+  let sheet = "";
+  if (fb && st?.ask) {
+    const it = st.ask.item, line = `${esc(it.jp)}${it.kanji ? ` (${esc(it.kanji)})` : ""} = ${esc(it.romaji)}${it.meaning ? ` · ${esc(it.meaning)}` : ""}`;
+    sheet = fb.ok
+      ? `<div class="sheet" style="--c:var(--good)"><div class="sheet-in"><h3>${pick(Gamify.cheers)}<span class="num">+${fb.gained} XP</span></h3><p class="kana">${line}</p></div></div>`
+      : `<div class="sheet" style="--c:var(--bad)"><div class="sheet-in"><h3>Not quite</h3><p class="kana">${line}</p>
+         ${light ? "" : `<p class="soft">It comes back at the end of this lesson.</p><button class="cta" style="--c:var(--bad)" data-act="next" id="cont">Continue</button>`}</div></div>`;
+  }
+  app.innerHTML = `<section class="quiz" aria-label="${esc(ui.title)}">
+    <div class="qtop"><button class="x" data-act="quit" aria-label="Quit session">✕</button>${top}</div>
+    <div class="combo">${combo}</div>
+    <div class="stage" ${fb ? 'style="animation:none"' : ""}>${stage}</div>
+  </section>${sheet}`;
+  document.getElementById("cont")?.focus();
+}
+
+function renderResults() {
+  const { sum, rw, title, unit } = ui.results;
+  const light = sum.mode === "lightning";
+  const acc = sum.questions ? Math.round(sum.firstTry * 100 / sum.questions) : 0;
+  const celebrate = light || (rw.stars || 0) > 0 || acc >= 80;
+  const hero = light ? "⚡" : rw.stars === 3 ? "🏆" : acc >= 80 ? "🎉" : "💪";
+  const head = light ? (rw.newBest ? "New record!" : "Time's up!") : rw.stars === 3 ? "Perfect!" : acc >= 80 ? "Great work!" : "Practice makes perfect";
+  const lines = [];
+  if (rw.streakUp) lines.push(["🔥", `Streak extended to ${rw.streak} day${rw.streak === 1 ? "" : "s"}`, "var(--flame)"]);
+  if (rw.goalBonus) lines.push(["🎁", `Daily goal reached. Chest: +${rw.goalBonus} XP`, "var(--gold)"]);
+  if (rw.levelUp) lines.push(["⬆️", `Level up! You're now level ${rw.levelUp}`, "var(--indigo)"]);
+  if (rw.unlocked) lines.push(["🔓", `Unlocked: ${TRACKS[rw.unlocked.track].native} · ${rw.unlocked.title}`, "var(--good)"]);
+  if (rw.earnedFreeze) lines.push(["❄️", "Streak freeze earned. It covers one missed day", "var(--ice)"]);
+  if (light && rw.newBest) lines.push(["⚡", `New Lightning best: ${sum.firstTry}`, "var(--flame)"]);
+  rw.newAch.forEach(a => lines.push([a.emoji, `Achievement: ${a.title}`, "var(--accent)"]));
+  let primary;
+  if (rw.unlocked) primary = `<button class="cta" data-act="lesson" data-v="${rw.unlocked.id}">Next: ${esc(rw.unlocked.title)} ▶</button>`;
+  else if (unit) primary = `<button class="cta" data-act="lesson" data-v="${unit.id}">Keep going ▶</button>`;
+  else if (light) primary = `<button class="cta" style="--c:var(--flame)" data-act="lightning">Play again ⚡</button>`;
+  else primary = `<button class="cta" data-act="home">Continue</button>`;
+  app.innerHTML = `<main class="res">
+    <div class="hero">${hero}</div><h1>${head}</h1><div class="from kana">${esc(title)}</div>
+    ${rw.stars != null ? `<div class="bigstars" aria-label="${rw.stars} of 3 stars">${[0, 1, 2].map(i => i < rw.stars ? `<b style="animation-delay:${.3 + i * .3}s">★</b>` : "★").join("")}</div>`
+      : unit && sum.mode === "lesson" ? `<p class="learned">Learned ${P.seenCount(state, unit)} of ${unit.items.length}. Meet them all to earn stars ⭐</p>` : ""}
+    <div class="xpbig num" id="xpc">+0 XP</div>
+    <div class="tiles">
+      ${light ? `<div class="tile" style="--c:var(--flame)"><b class="num">${sum.firstTry}</b><small>Score</small></div>` : `<div class="tile" style="--c:var(--good)"><b class="num">${acc}%</b><small>Accuracy</small></div>`}
+      <div class="tile" style="--c:var(--accent)"><b class="num">${sum.maxCombo}×</b><small>Best combo</small></div>
+      <div class="tile" style="--c:var(--flame)"><b class="num">🔥${rw.streak}</b><small>Streak</small></div>
+    </div>
+    <div class="rewards">${lines.map(([e, t, c], i) => `<div class="reward" style="--c:${c};animation-delay:${.5 + i * .15}s"><span>${e}</span>${esc(t)}</div>`).join("")}</div>
+    <div class="btns">${primary}<button class="ghost" data-act="home">Home</button></div>
+  </main>`;
+  const total = rw.xp + rw.goalBonus, el = document.getElementById("xpc"), t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / 1100); el.textContent = `+${Math.round(total * (1 - Math.pow(1 - k, 3)))} XP`; if (k < 1 && ui.screen === "results") requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+  if (celebrate) confetti();
+}
+
+function chartHtml() {
+  const s = state, t = ui.track, all = Course.itemsOf(t);
+  const tone = id => !seen(s, id) ? "color-mix(in srgb, var(--muted) 12%, transparent)"
+    : box(s, id) >= Srs.MASTERED ? "color-mix(in srgb, var(--gold) 40%, transparent)"
+    : `color-mix(in srgb, var(--accent) ${12 + box(s, id) * 10}%, transparent)`;
+  const groups = Course.unitsOf(t).map(u => {
+    if (t === "vocab") return `<div class="grp"><h3>${esc(u.title)} · ${esc(u.subtitle)}</h3><div class="words">${u.items.map(i =>
+      `<button class="wrow" style="--m:${tone(i.id)}" data-act="speak" data-v="${esc(i.jp)}"><div><span class="kana">${esc(i.jp)}</span>${i.kanji ? ` <span class="kana" style="color:var(--muted)">${esc(i.kanji)}</span>` : ""}<small>${esc(i.romaji)}</small></div>
+       <div>${esc(i.meaning)}</div><span class="dots" aria-label="Memory level ${box(s, i.id)} of 5">${[0, 1, 2, 3, 4].map(k => `<i class="${k < box(s, i.id) ? "on" : ""}"></i>`).join("")}</span></button>`).join("")}</div></div>`;
+    const combo = u.items[0].jp.length > 1;
+    return `<div class="grp"><h3>${esc(u.title)}</h3><div class="grid ${combo ? "combo3" : ""}">${u.items.map(i =>
+      `<button class="cell" style="--m:${tone(i.id)}" data-act="speak" data-v="${esc(i.jp)}" aria-label="${esc(i.jp)} ${esc(i.romaji)}"><span class="kana">${esc(i.jp)}</span><small>${esc(i.romaji)}</small></button>`).join("")}</div></div>`;
+  }).join("");
+  return `<h2 class="title">Chart</h2><p class="lead num">${P.mastered(s, all)} of ${all.length} mastered. Tap any card to hear it.</p>
+  ${trackSeg()}
+  <div class="legend"><span style="--m:color-mix(in srgb, var(--muted) 12%, transparent)">Not met yet</span><span style="--m:color-mix(in srgb, var(--accent) 32%, transparent)">Learning</span><span style="--m:color-mix(in srgb, var(--gold) 40%, transparent)">Mastered</span></div>
+  ${groups}`;
+}
+
+function profileHtml() {
+  const s = state;
+  const kana = Course.items.filter(i => i.kind === "kana"), words = Course.itemsOf("vocab");
+  const stats = [["⭐", Gamify.level(s.totalXp), "Level"], ["⚡", s.totalXp, "Total XP"], ["🔥", s.bestStreak, "Best streak"], ["☄️", s.bestCombo, "Best combo"],
+    ["⏱️", s.lightningBest, "Lightning best"], ["🎌", s.sessions, "Sessions"], ["あ", `${P.mastered(s, kana)}/${kana.length}`, "Kana mastered"], ["📚", `${P.mastered(s, words)}/${words.length}`, "Words mastered"]];
+  return `<h2 class="title">Profile</h2>
+  <div class="stats">${stats.map(([e, v, l]) => `<div class="stat"><b class="num">${e} ${v}</b><small>${l}</small></div>`).join("")}</div>
+  <h3 class="sec">Daily goal</h3>
+  <div class="goals" role="group" aria-label="Daily goal">${[[50, "Casual"], [100, "Regular"], [200, "Serious"], [300, "Insane"]].map(([x, n]) =>
+    `<button data-act="goal" data-v="${x}" aria-pressed="${s.dailyGoal === x}"><b>${n}</b><small class="num">${x} XP</small></button>`).join("")}</div>
+  <div class="row"><div><b>Sound</b><small>Japanese voice and answer chimes</small></div>
+    <button class="switch" role="switch" id="sound" aria-label="Sound" aria-checked="${s.sound}" data-act="sound"></button></div>
+  <h3 class="sec">Achievements · <span class="num">${s.achievements.length}/${ACHIEVEMENTS.length}</span></h3>
+  ${ACHIEVEMENTS.map(a => { const got = s.achievements.includes(a.key);
+    return `<div class="ach ${got ? "got" : ""}"><span>${got ? a.emoji : "🔒"}</span><div><b>${a.title}</b><small>${a.desc}</small></div></div>`; }).join("")}
+  <div class="row"><div><b>Make it feel like an app</b><small>Open this page in your phone's browser and choose “Add to Home Screen”.</small></div></div>
+  ${ui.confirmReset ? `<div class="confirm"><p><b>Reset everything?</b> XP, streak, stars and every learned kana will be wiped. This can't be undone.</p>
+    <div><button data-act="reset-no">Cancel</button><button class="yes" data-act="reset-yes">Reset</button></div></div>`
+    : `<button class="danger" data-act="reset">Reset all progress</button>`}
+  <p class="sync">${syncStatus === "synced" ? "Progress saved to your account" : "Progress saved in this browser"}</p>`;
+}
+
+// ───────────── Confetti ─────────────
+function confetti() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const cv = document.getElementById("confetti"), ctx = cv.getContext("2d");
+  const css = getComputedStyle(document.documentElement);
+  const cols = ["--accent", "--gold", "--indigo", "--good", "--ice", "--flame"].map(v => css.getPropertyValue(v).trim());
+  const dpr = devicePixelRatio || 1;
+  cv.hidden = false; cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  const ps = Array.from({ length: 150 }, (_, i) => ({ x: Math.random(), y: -Math.random() * .6, vx: (Math.random() - .5) * .25, vy: .15 + Math.random() * .3,
+    spin: Math.random() * 12 - 6, size: (8 + Math.random() * 10) * dpr, c: cols[i % cols.length] }));
+  const t0 = performance.now();
+  const frame = now => {
+    const t = (now - t0) / 1000;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    for (const p of ps) {
+      const x = (p.x + p.vx * t) * cv.width, y = (p.y + p.vy * t + .08 * t * t) * cv.height;
+      if (y > cv.height) continue;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(p.spin * t); ctx.fillStyle = p.c; ctx.fillRect(-p.size / 2, -p.size * .275, p.size, p.size * .55); ctx.restore();
+    }
+    if (t < 5) requestAnimationFrame(frame); else { cv.hidden = true; }
+  };
+  requestAnimationFrame(frame);
+}
+
+// ───────────── Events ─────────────
+app.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (!b || b.disabled) return;
+  const v = b.dataset.v;
+  switch (b.dataset.act) {
+    case "tab": ui.tab = v; ui.confirmReset = false; render(); window.scrollTo(0, 0); break;
+    case "track": ui.track = v; render(); break;
+    case "lesson": startLesson(Course.unit(v)); break;
+    case "review": startReview(); break;
+    case "lightning": startLightning(); break;
+    case "ans": answer(+v); break;
+    case "next": next(); break;
+    case "quit": quit(); break;
+    case "speak": speak(v); break;
+    case "home": ui.screen = "home"; render(); window.scrollTo(0, 0); break;
+    case "goal": state.dailyGoal = +v; save(); render(); break;
+    case "sound": state.sound = !state.sound; save(); render(); document.getElementById("sound")?.focus(); break;
+    case "reset": ui.confirmReset = true; render(); break;
+    case "reset-no": ui.confirmReset = false; render(); break;
+    case "reset-yes": state = { ...freshState(), dailyGoal: state.dailyGoal, sound: state.sound }; ui.confirmReset = false; save(); render(); break;
+  }
+});
+document.addEventListener("keydown", e => {
+  if (ui.screen !== "quiz") return;
+  if (e.key === "Escape") return quit();
+  if (/^[1-4]$/.test(e.key) && ui.session?.current?.ask && !ui.fb) answer(+e.key - 1);
+  else if (e.key === "Enter" && (ui.fb || ui.session?.current?.teach)) { e.preventDefault(); next(); }
+});
+render();
+</script>
