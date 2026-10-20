@@ -123,7 +123,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo
 .prompt button { display: grid; justify-items: center; }
 .prompt .big { font-size: 112px; line-height: 1.1; }
 .prompt .mid { font-size: 64px; line-height: 1.15; }
-.prompt .word { font-size: clamp(36px, 12vw, 64px); line-height: 1.2; }
+.prompt .word { font-size: min(72px, calc(min(100vw, 520px) * .78 / var(--n, 4))); line-height: 1.25; white-space: nowrap; }
 .prompt .en { font-size: 32px; font-weight: 900; line-height: 1.2; }
 .prompt .hint { color: var(--muted); font-size: 22px; }
 .prompt .say { font-size: 13px; color: var(--muted); }
@@ -144,9 +144,9 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo
 .spacer { height: 150px; flex: none; }
 
 .teach { flex: 1; display: grid; place-items: center; align-content: center; gap: 14px; text-align: center; }
-.card { background: var(--surface); border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 32px; padding: 26px 34px; box-shadow: var(--shadow); display: grid; justify-items: center; max-width: 100%; }
+.card { width: 100%; background: var(--surface); border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 32px; padding: 26px 34px; box-shadow: var(--shadow); display: grid; justify-items: center; max-width: 100%; }
 .card .big { font-size: 128px; line-height: 1.1; }
-.card .word { font-size: clamp(40px, 13vw, 72px); line-height: 1.2; }
+.card .word { font-size: min(72px, calc(min(100vw, 520px) * .7 / var(--n, 4))); line-height: 1.25; white-space: nowrap; }
 .card .kanji { font-size: 26px; color: var(--muted); }
 .card .ro { font-size: 34px; font-weight: 900; color: var(--accent); }
 .card .mean { font-size: 21px; }
@@ -826,7 +826,7 @@ function renderQuiz() {
     const it = st.teach;
     stage = `<div class="teach"><span class="pill" style="--c:var(--accent)">✨ NEW</span>
       <button class="card" data-act="speak" data-v="${esc(it.jp)}" aria-label="Hear ${esc(it.jp)}">
-        <span class="kana ${it.kind === "kana" ? "big" : "word"}">${esc(it.jp)}</span>
+        <span class="kana ${it.kind === "kana" ? "big" : "word"}" style="--n:${[...it.jp].length}">${esc(it.jp)}</span>
         ${it.kanji ? `<span class="kanji kana">${esc(it.kanji)}</span>` : ""}
         <span class="ro">${esc(it.romaji)}</span>${it.meaning ? `<span class="mean">${esc(it.meaning)}</span>` : ""}
       </button><span class="say" style="color:var(--muted)">🔊 Tap the card to hear it</span></div>
@@ -836,7 +836,7 @@ function renderQuiz() {
     const instr = { k2r: "What sound is this?", r2k: "Pick the kana", w2m: "What does this mean?", m2w: "How do you say this?" }[q.type];
     const cls = { k2r: "kana big", w2m: "kana word", r2k: "mid", m2w: "en" }[q.type];
     const wide = q.options.some(o => o.length > (jpOpts ? 4 : 7));
-    const promptInner = `<span class="${cls}">${esc(q.prompt)}</span>${q.hint ? `<span class="hint kana">${esc(q.hint)}</span>` : ""}${jpPrompt && !light ? `<span class="say">🔊 tap to hear</span>` : ""}`;
+    const promptInner = `<span class="${cls}" style="--n:${[...q.prompt].length}">${esc(q.prompt)}</span>${q.hint ? `<span class="hint kana">${esc(q.hint)}</span>` : ""}${jpPrompt && !light ? `<span class="say">🔊 tap to hear</span>` : ""}`;
     stage = `<p class="instr">${instr}${q.retry ? " · try again" : ""}</p>
       <div class="prompt ${fb && !fb.ok ? "shake" : ""}">${jpPrompt ? `<button data-act="speak" data-v="${esc(q.item.jp)}">${promptInner}</button>` : `<div>${promptInner}</div>`}</div>
       <div class="opts ${wide ? "wide" : ""}">${q.options.map((o, i) => {

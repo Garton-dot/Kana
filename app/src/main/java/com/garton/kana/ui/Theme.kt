@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
 object KanaColors {
@@ -50,7 +51,14 @@ private val Dark = darkColorScheme(
     onSurfaceVariant = Color(0xFFB9B0C6),
 )
 
+private val Base = Typography()
+
+// Body styles ship with a fixed 20–24sp line height; text drawn bigger than that overlaps itself when it wraps,
+// so line height follows the font size instead.
 private val Type = Typography(
+    bodyLarge = Base.bodyLarge.copy(lineHeight = 1.3.em),
+    bodyMedium = Base.bodyMedium.copy(lineHeight = 1.3.em),
+    bodySmall = Base.bodySmall.copy(lineHeight = 1.3.em),
     headlineLarge = TextStyle(fontWeight = FontWeight.Black, fontSize = 32.sp),
     headlineMedium = TextStyle(fontWeight = FontWeight.ExtraBold, fontSize = 26.sp),
     titleLarge = TextStyle(fontWeight = FontWeight.Bold, fontSize = 20.sp),

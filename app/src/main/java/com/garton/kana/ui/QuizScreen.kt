@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,10 +50,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.garton.kana.engine.Feedback
@@ -204,20 +207,16 @@ private fun TeachCard(item: StudyItem, onSpeak: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         Box(
             Modifier
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(32.dp))
                 .background(MaterialTheme.colorScheme.surface)
                 .border(2.dp, KanaColors.Sakura.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
                 .clickable(onClick = onSpeak)
-                .padding(horizontal = 36.dp, vertical = 28.dp),
+                .padding(horizontal = 20.dp, vertical = 28.dp),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    item.japanese,
-                    fontSize = if (item.kind == ItemKind.KANA) 120.sp else japaneseSize(item.japanese),
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                )
+                FittedText(item.japanese, if (item.kind == ItemKind.KANA) 120.sp else 72.sp)
                 item.kanji?.let { Text(it, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Text(item.romaji, fontSize = 34.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura)
                 if (item.meaning.isNotEmpty()) {
@@ -230,10 +229,22 @@ private fun TeachCard(item: StudyItem, onSpeak: () -> Unit) {
     }
 }
 
-private fun japaneseSize(text: String) = when {
-    text.length <= 3 -> 72.sp
-    text.length <= 5 -> 56.sp
-    else -> 40.sp
+/** One line of large text, shrunk until it fits the width, so long words never wrap onto themselves. */
+@Composable
+private fun FittedText(text: String, maxSize: TextUnit, fontWeight: FontWeight = FontWeight.Bold) {
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        val fit = with(LocalDensity.current) { maxWidth.toSp() / (text.length * 1.1f) }
+        val size = if (fit < maxSize) fit else maxSize
+        Text(
+            text,
+            fontSize = size,
+            lineHeight = size * 1.25f,
+            fontWeight = fontWeight,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
 }
 
 @Composable
@@ -259,17 +270,18 @@ private fun AskCard(question: Question, feedback: Feedback?, onSpeak: () -> Unit
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    question.prompt,
-                    fontSize = when (question.type) {
-                        QuestionType.KANA_TO_ROMAJI -> 120.sp
-                        QuestionType.WORD_TO_MEANING -> japaneseSize(question.prompt)
-                        QuestionType.ROMAJI_TO_KANA -> 64.sp
-                        QuestionType.MEANING_TO_WORD -> 34.sp
-                    },
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                )
+                when (question.type) {
+                    QuestionType.KANA_TO_ROMAJI -> FittedText(question.prompt, 120.sp)
+                    QuestionType.WORD_TO_MEANING -> FittedText(question.prompt, 72.sp)
+                    QuestionType.ROMAJI_TO_KANA -> FittedText(question.prompt, 64.sp)
+                    QuestionType.MEANING_TO_WORD -> Text(
+                        question.prompt,
+                        fontSize = 34.sp,
+                        lineHeight = 42.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 question.hint?.let { Text(it, fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 if (question.promptIsJapanese) Text("🔊", fontSize = 20.sp)
             }
