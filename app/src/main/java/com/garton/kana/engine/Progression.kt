@@ -35,7 +35,8 @@ object Progression {
     fun isUnlocked(state: ProgressState, unit: StudyUnit): Boolean {
         val list = Course.units(unit.track)
         val index = list.indexOf(unit)
-        return index <= 0 || (state.unitStars[list[index - 1].id] ?: 0) >= 1
+        return index <= 0 || (state.unitStars[list[index - 1].id] ?: 0) >= 1 ||
+            unit.items.any { (state.items[it.id]?.seen ?: 0) > 0 } // e.g. words studied in Anki before importing
     }
 
     fun seenCount(state: ProgressState, unit: StudyUnit): Int =
@@ -54,9 +55,10 @@ object Progression {
     fun seenItems(state: ProgressState, kind: ItemKind? = null): List<StudyItem> =
         Course.items.filter { (kind == null || it.kind == kind) && (state.items[it.id]?.seen ?: 0) > 0 }
 
-    /** The unit the big "Continue" button should open. */
-    fun nextUnit(state: ProgressState): StudyUnit {
-        val unlocked = Course.units.filter { isUnlocked(state, it) }
+    /** The unit the big "Continue" button should open, within [track] when it has any units. */
+    fun nextUnit(state: ProgressState, track: Track? = null): StudyUnit {
+        val pool = track?.let { Course.units(it) }?.ifEmpty { null } ?: Course.units
+        val unlocked = pool.filter { isUnlocked(state, it) }
         return unlocked.firstOrNull { (state.unitStars[it.id] ?: 0) == 0 }
             ?: unlocked.minByOrNull { state.unitStars[it.id] ?: 0 }
             ?: Course.units.first()

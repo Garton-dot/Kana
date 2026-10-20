@@ -1,12 +1,17 @@
 package com.garton.kana.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.garton.kana.audio.Speaker
 import com.garton.kana.data.Course
+import com.garton.kana.engine.AnkiFormatException
+import com.garton.kana.engine.AnkiImport
 import com.garton.kana.engine.Feedback
 import com.garton.kana.engine.Progression
 import com.garton.kana.engine.QuizEngine
@@ -21,7 +26,12 @@ import com.garton.kana.model.StudyItem
 import com.garton.kana.model.StudyUnit
 import com.garton.kana.model.Track
 import com.garton.kana.reminder.Reminders
+import com.garton.kana.storage.AnkiReader
+import com.garton.kana.storage.DeckRepository
 import com.garton.kana.storage.ProgressRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 enum class Tab { LEARN, CHART, PROFILE }
@@ -48,6 +58,7 @@ data class QuizUi(
 
 class KanaViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = ProgressRepository(app)
+    private val decks = DeckRepository(app).also { Course.install(it.load()) }
     private val engine = QuizEngine()
     private val speaker = Speaker(app)
 
@@ -59,6 +70,14 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var quiz by mutableStateOf<QuizUi?>(null)
         private set
+
+    /** Bumped whenever the imported deck changes, so screens re-read [Course]. */
+    var deckVersion by mutableIntStateOf(0)
+        private set
+    var importing by mutableStateOf(false)
+        private set
+    /** Outcome of the last Anki import, shown once in a dialog. */
+    var importMessage by mutableStateOf<Pair<String, String>?>(null)
 
     private var session: QuizSession? = null
     private var title = ""
@@ -170,6 +189,43 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeResults() {
         screen = Screen.Home
+    }
+
+    // ---- Anki import ----
+
+    fun importAnki(uri: Uri) {
+        if (importing) return
+        importing = true
+        viewModelScope.launch {
+            try {
+                val collection = withContext(Dispatchers.IO) { AnkiReader.read(getApplication(), uri) }
+                val deck = AnkiImport.deck(collection)
+                withContext(Dispatchers.IO) { decks.save(deck) }
+                Course.install(deck)
+                val (state, report) = AnkiImport.merge(progress, collection)
+                updateProgress(state)
+                deckVersion++
+                track = Track.DECK
+                tab = Tab.LEARN
+                importMessage = "Imported ${deck.name}" to buildString {
+                    append("${report.words} words added as the Anki track.")
+                    if (report.studied > 0) append(" Your Anki history carried over: ${report.studied} studied, ${report.mastered} mastered.")
+                }
+            } catch (e: AnkiFormatException) {
+                importMessage = "Couldn't import that deck" to (e.message ?: "")
+            } catch (e: Exception) {
+                importMessage = "Couldn't import that deck" to "The file couldn't be read as an Anki deck (.apkg)."
+            } finally {
+                importing = false
+            }
+        }
+    }
+
+    fun removeDeck() {
+        decks.clear()
+        Course.install(null)
+        deckVersion++
+        if (track == Track.DECK) track = Track.HIRAGANA
     }
 
     // ---- Settings ----

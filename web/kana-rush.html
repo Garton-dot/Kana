@@ -141,7 +141,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo
 .opt.no { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, var(--surface)); box-shadow: 0 4px 0 var(--bad); }
 .opt.dim { opacity: .45; }
 .opt[disabled] { cursor: default; }
-.spacer { height: 150px; flex: none; }
+.spacer { height: 220px; flex: none; }
 
 .teach { flex: 1; display: grid; place-items: center; align-content: center; gap: 14px; text-align: center; }
 .card { width: 100%; background: var(--surface); border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent); border-radius: 32px; padding: 26px 34px; box-shadow: var(--shadow); display: grid; justify-items: center; max-width: 100%; }
@@ -163,6 +163,19 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo
 .sheet p { margin: 0; color: var(--c); font-weight: 700; }
 .sheet p.soft { color: var(--muted); font-weight: 500; font-size: 14px; }
 @keyframes up { from { transform: translateY(100%); } }
+
+.card .ex { font-size: 19px; margin-top: 14px; }
+.card .ex-en { font-size: 14px; color: var(--muted); }
+.import { background: var(--surface); border-radius: 22px; padding: 20px; box-shadow: var(--shadow); display: grid; gap: 8px; }
+.import h3 { margin: 0; font-size: 20px; }
+.import p { margin: 0; color: var(--muted); }
+.import .how { font-size: 13px; }
+.notice { display: flex; gap: 10px; align-items: flex-start; padding: 14px 14px 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--c) 14%, var(--surface)); }
+.notice div { flex: 1; min-width: 0; }
+.notice b { color: var(--c); }
+.notice p { margin: 2px 0 0; font-size: 14px; }
+.ghost.small { width: auto; min-height: 40px; padding: 0 12px; font-size: 14px; }
+.row .danger { padding: 0 4px; }
 
 /* Results */
 .res { padding-block: 32px 32px; display: grid; gap: 16px; justify-items: center; text-align: center; }
@@ -244,6 +257,7 @@ h2.title { margin: 0; font-size: 28px; font-weight: 900; }
 
 <div id="app"></div>
 <canvas id="confetti" hidden></canvas>
+<input type="file" id="apkg" accept=".apkg" hidden>
 
 <script>
 // LOGIC START ─ pure game rules, mirrors the Android engine
@@ -403,6 +417,7 @@ const TRACKS = {
   hiragana: { title: "Hiragana", native: "ひらがな" },
   katakana: { title: "Katakana", native: "カタカナ" },
   vocab: { title: "Vocabulary", native: "ことば" },
+  deck: { title: "Anki deck", native: "Anki" },
 };
 const toKata = s => [...s].map(c => { const p = c.codePointAt(0); return p >= 0x3041 && p <= 0x3096 ? String.fromCodePoint(p + 0x60) : c; }).join("");
 
@@ -427,16 +442,73 @@ const Course = (() => {
     });
     units.push({ id, track: "vocab", title, subtitle, items });
   });
-  const items = units.flatMap(u => u.items);
-  const itemById = new Map(items.map(i => [i.id, i]));
-  const unitById = new Map(units.map(u => [u.id, u]));
-  return {
-    units, items,
-    item: id => itemById.get(id), unit: id => unitById.get(id),
-    unitsOf: t => units.filter(u => u.track === t),
-    itemsOf: t => units.filter(u => u.track === t).flatMap(u => u.items),
+  const C = {
+    deckName: null, units: [], items: [], byItem: new Map(), byUnit: new Map(),
+    // Swaps in (or removes, with null) the learner's imported Anki deck as its own track.
+    install(deck) {
+      C.deckName = deck ? deck.name : null;
+      C.units = [...units, ...(deck ? deckUnits(deck) : [])];
+      C.items = C.units.flatMap(u => u.items);
+      C.byItem = new Map(C.items.map(i => [i.id, i]));
+      C.byUnit = new Map(C.units.map(u => [u.id, u]));
+    },
+    item: id => C.byItem.get(id), unit: id => C.byUnit.get(id),
+    unitsOf: t => C.units.filter(u => u.track === t),
+    itemsOf: t => C.units.filter(u => u.track === t).flatMap(u => u.items),
   };
+  C.install(null);
+  return C;
 })();
+
+// Stable ids: the same word in a re-imported deck keeps its progress.
+function deckItemIds(words) {
+  const seenKeys = new Map();
+  return words.map(([w, r, m]) => { const k = `d:${w}|${r}|${m}`, n = (seenKeys.get(k) || 0) + 1; seenKeys.set(k, n); return n === 1 ? k : `${k}#${n}`; });
+}
+const DECK_UNIT = 25;
+function deckUnits(deck) {
+  const ids = deckItemIds(deck.words), out = [];
+  for (let i = 0; i < deck.words.length; i += DECK_UNIT) {
+    const id = `d-${out.length + 1}`;
+    const items = deck.words.slice(i, i + DECK_UNIT).map(([word, reading, meaning, sentence, sentenceEn], k) => {
+      const jp = reading || word;
+      return { id: ids[i + k], kind: "word", jp, romaji: toRomaji(jp) || "", meaning, kanji: word !== jp ? word : null, sentence: sentence || null, sentenceEn: sentenceEn || null, unitId: id };
+    });
+    out.push({ id, track: "deck", title: `Set ${out.length + 1}`, subtitle: items.slice(0, 4).map(written).join(" "), items });
+  }
+  return out;
+}
+// How a word is written: deck words lead with their kanji, everything else with kana.
+function written(it) { return it.kind === "word" ? (it.kanji || it.jp) : it.jp; }
+
+// Kana → Hepburn romaji in the course's style ("sayounara", "koohii"); null if the text isn't all kana.
+const ROMAJI = (() => {
+  const m = {};
+  const rows = [["あいうえお", "a i u e o"], ["かきくけこ", "ka ki ku ke ko"], ["さしすせそ", "sa shi su se so"], ["たちつてと", "ta chi tsu te to"],
+    ["なにぬねの", "na ni nu ne no"], ["はひふへほ", "ha hi fu he ho"], ["まみむめも", "ma mi mu me mo"], ["らりるれろ", "ra ri ru re ro"],
+    ["がぎぐげご", "ga gi gu ge go"], ["ざじずぜぞ", "za ji zu ze zo"], ["だぢづでど", "da ji zu de do"], ["ばびぶべぼ", "ba bi bu be bo"],
+    ["ぱぴぷぺぽ", "pa pi pu pe po"], ["ぁぃぅぇぉ", "a i u e o"], ["やゆよわをんゔゃゅょゎ", "ya yu yo wa o n vu ya yu yo wa"]];
+  for (const [k, r] of rows) { const rs = r.split(" "); [...k].forEach((c, i) => m[c] = rs[i]); }
+  const d = "きゃkya きゅkyu きょkyo しゃsha しゅshu しょsho ちゃcha ちゅchu ちょcho にゃnya にゅnyu にょnyo ひゃhya ひゅhyu ひょhyo みゃmya みゅmyu みょmyo りゃrya りゅryu りょryo ぎゃgya ぎゅgyu ぎょgyo じゃja じゅju じょjo ぢゃja ぢゅju ぢょjo びゃbya びゅbyu びょbyo ぴゃpya ぴゅpyu ぴょpyo しぇshe ちぇche じぇje てぃti でぃdi ふぁfa ふぃfi ふぇfe ふぉfo うぃwi うぇwe ゔぁva";
+  for (const e of d.split(" ")) m[e.slice(0, 2)] = e.slice(2);
+  return m;
+})();
+function toRomaji(text) {
+  const k = [...text].map(c => { const p = c.codePointAt(0); return p >= 0x30A1 && p <= 0x30F6 ? String.fromCodePoint(p - 0x60) : c; });
+  let out = "", dbl = false;
+  for (let i = 0; i < k.length; i++) {
+    const c = k[i];
+    if (c === "っ") { dbl = true; continue; }
+    if (c === "ー") { const v = [...out].reverse().find(x => "aeiou".includes(x)); if (v) out += v; continue; }
+    if (c === " " || c === "　" || c === "・") { out += " "; continue; }
+    let ro = ROMAJI[c + (k[i + 1] || "")];
+    if (ro && (c + (k[i + 1] || "")).length === 2 && k[i + 1]) i++; else ro = ROMAJI[c];
+    if (!ro) return null;
+    if (dbl) out += ro.startsWith("ch") ? "t" : ro[0];
+    dbl = false; out += ro;
+  }
+  return out;
+}
 
 const MIN = 60000, DAY = 24 * 60 * MIN;
 const Srs = {
@@ -476,6 +548,7 @@ const ACHIEVEMENTS = [
   ["KATAKANA_ALL", "⚡", "Katakana King", "Clear every katakana unit", s => trackCleared(s, "katakana")],
   ["VOCAB_ALL", "📚", "Wordsmith", "Clear lessons 1–5", s => trackCleared(s, "vocab")],
   ["WORDS_50", "🧠", "Lexicon", "Know 50 words well", s => Course.itemsOf("vocab").filter(i => box(s, i.id) >= 3).length >= 50],
+  ["DECK_100", "🀄", "Collector", "Know 100 words from your Anki deck", s => Course.itemsOf("deck").filter(i => box(s, i.id) >= 3).length >= 100],
   ["LIGHTNING_30", "⏱️", "Speed Demon", "Score 30 in Lightning", s => s.lightningBest >= 30],
   ["LEVEL_10", "👑", "Level 10", "Reach level 10", s => Gamify.level(s.totalXp) >= 10],
   ["SESSIONS_50", "🎌", "Dedicated", "Complete 50 sessions", s => s.sessions >= 50],
@@ -488,14 +561,19 @@ const freshState = () => ({
 });
 
 const P = {
-  isUnlocked(s, u) { const l = Course.unitsOf(u.track), i = l.indexOf(u); return i <= 0 || (s.unitStars[l[i - 1].id] || 0) >= 1; },
+  isUnlocked(s, u) {
+    const l = Course.unitsOf(u.track), i = l.indexOf(u);
+    // A unit with words already studied (say, in Anki before importing) is open too.
+    return i <= 0 || (s.unitStars[l[i - 1].id] || 0) >= 1 || u.items.some(it => seen(s, it.id));
+  },
   seenCount: (s, u) => u.items.filter(i => seen(s, i.id)).length,
   mastered: (s, items) => items.filter(i => box(s, i.id) >= Srs.MASTERED).length,
   due: (s, now) => Course.items.filter(i => Srs.isDue(s.items[i.id], now)).sort((a, b) => s.items[a.id][1] - s.items[b.id][1]),
   unlockedItems: (s, t) => Course.unitsOf(t).filter(u => P.isUnlocked(s, u)).flatMap(u => u.items),
   seenItems: (s, kind) => Course.items.filter(i => (!kind || i.kind === kind) && seen(s, i.id)),
-  nextUnit(s) {
-    const un = Course.units.filter(u => P.isUnlocked(s, u));
+  nextUnit(s, track) {
+    const inTrack = track ? Course.unitsOf(track) : [];
+    const un = (inTrack.length ? inTrack : Course.units).filter(u => P.isUnlocked(s, u));
     return un.find(u => !(s.unitStars[u.id] || 0)) || un.reduce((a, b) => (s.unitStars[b.id] || 0) < (s.unitStars[a.id] || 0) ? b : a, un[0]);
   },
   streakNow(s, today) {
@@ -550,9 +628,9 @@ const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { cons
 const pick = a => a[Math.floor(Math.random() * a.length)];
 
 const Q = {
-  types: it => it.kind === "kana" ? ["k2r", "r2k"] : ["w2m", "m2w"],
-  answer: (it, t) => ({ k2r: it.romaji, r2k: it.jp, w2m: it.meaning, m2w: it.jp })[t],
-  prompt: (it, t) => ({ k2r: it.jp, r2k: it.romaji, w2m: it.jp, m2w: it.meaning })[t],
+  types: it => it.kind === "kana" ? ["k2r", "r2k"] : it.kind === "word" && it.kanji ? ["w2m", "m2w", "k2read"] : ["w2m", "m2w"],
+  answer: (it, t) => ({ k2r: it.romaji, r2k: it.jp, w2m: it.meaning, m2w: written(it), k2read: it.jp })[t],
+  prompt: (it, t) => ({ k2r: it.jp, r2k: it.romaji, w2m: written(it), m2w: it.meaning, k2read: written(it) })[t],
   question(item, pool, type = pick(Q.types(item))) {
     const ans = Q.answer(item, type), pr = Q.prompt(item, type);
     // A distractor must not also be right (じ and ぢ are both "ji").
@@ -561,7 +639,7 @@ const Q = {
     const far = shuffle(Course.items.filter(ok));
     const distractors = [...new Set([...near, ...far].map(o => Q.answer(o, type)))].slice(0, 3);
     const options = shuffle([...distractors, ans]);
-    return { item, type, prompt: pr, hint: type === "w2m" ? item.kanji : null, options, correct: options.indexOf(ans), retry: false };
+    return { item, type, prompt: pr, hint: type === "w2m" && item.kind === "vocab" ? item.kanji : null, options, correct: options.indexOf(ans), retry: false };
   },
   weighted(items, s) {
     const w = items.map(i => Srs.MAX + 1 - box(s, i.id));
@@ -609,7 +687,97 @@ function Session(mode, unitId, steps, retry, refill) {
   S.summary = () => ({ mode, unitId, firstTry: S.firstTry, questions: S.questions, xp: S.xp, maxCombo: S.maxCombo, answers: S.answers });
   return S;
 }
+// Anki → Kana Rush: notes become deck words, cards' schedules become SRS boxes.
+const Anki = {
+  WORD: ["word", "expression", "vocab", "vocabulary", "vocabulary-kanji", "kanji", "japanese", "front"],
+  READING: ["reading", "kana", "hiragana", "furigana", "vocabulary-kana", "vocabulary-furigana", "pronunciation"],
+  MEANING: ["glossary", "meaning", "english", "definition", "translation", "vocabulary-english", "back"],
+  SENTENCE: ["sentence", "example", "sentence-kanji", "example sentence"],
+  SENTENCE_EN: ["sentence-english", "sentence english", "sentence translation", "sentence-meaning", "sentence meaning", "example translation"],
+  find: (names, keys) => { const i = names.findIndex(n => keys.includes(n.trim().toLowerCase())); return i < 0 ? null : i; },
+  clean: raw => String(raw || "").replace(/\[sound:[^\]]*\]/g, "").replace(/<br\s*\/?>|<div>/gi, " ").replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ").trim(),
+  // Anki furigana "食[た]べる": the written form drops the brackets, the reading keeps only them.
+  base: t => t.replace(/\s?([^\s\[\]]+)\[[^\]]*\]/g, "$1"),
+  reading: t => t.replace(/\s?[^\s\[\]]+\[([^\]]*)\]/g, "$1"),
+  wordOf(note) {
+    const names = note.fieldNames, f = i => i == null ? "" : Anki.clean(note.fields[i]);
+    const wi = Anki.find(names, Anki.WORD) ?? 0, ri = Anki.find(names, Anki.READING);
+    let mi = Anki.find(names, Anki.MEANING);
+    if (mi == null) { mi = names.findIndex((_, i) => i !== wi && i !== ri); if (mi < 0) mi = null; }
+    const rawWord = f(wi), word = Anki.base(rawWord).replace(/ /g, "");
+    let reading = f(ri); reading = (reading.includes("[") ? Anki.reading(reading) : reading).replace(/ /g, "");
+    if (!reading && rawWord.includes("[")) reading = Anki.reading(rawWord).replace(/ /g, "");
+    const meaning = f(mi);
+    if (!word || !meaning) return null;
+    const sentence = Anki.base(f(Anki.find(names, Anki.SENTENCE))), sentenceEn = f(Anki.find(names, Anki.SENTENCE_EN));
+    return [word, reading || word, meaning, sentence, sentenceEn];
+  },
+  ordered: col => [...col.notes].sort((a, b) => a.id - b.id),
+  deck(col) {
+    const words = Anki.ordered(col).map(Anki.wordOf).filter(Boolean);
+    if (!words.length) throw new Error("This deck has no notes with a word and a meaning.");
+    return { name: col.deckName, words };
+  },
+  // type: 0 new, 1 learning, 2 review, 3 relearning. Review due counts days from the collection's creation; learning due is epoch seconds.
+  toProgress(c, crt) {
+    if (c.type === 0 || c.reps === 0) return null;
+    const b = c.type === 1 || c.type === 3 ? 1 : c.ivl >= 21 ? 5 : c.ivl >= 7 ? 4 : c.ivl >= 3 ? 3 : 2;
+    const dueSec = c.type === 2 || c.queue === 3 ? crt + c.due * 86400 : c.due;
+    return [b, dueSec * 1000, c.reps, Math.max(0, c.reps - c.lapses)];
+  },
+  // Adds the history to a state copy; progress already further along in the app wins.
+  merge(state, col) {
+    const notes = Anki.ordered(col).filter(n => Anki.wordOf(n));
+    const ids = deckItemIds(Anki.deck(col).words), itemFor = new Map(notes.map((n, i) => [n.id, ids[i]]));
+    const best = new Map();
+    for (const c of col.cards) {
+      const id = itemFor.get(c.noteId), p = id && Anki.toProgress(c, col.crt);
+      if (p && (!best.has(id) || p[0] > best.get(id)[0])) best.set(id, p);
+    }
+    const s = structuredClone(state);
+    for (const [id, p] of best) { const mine = s.items[id]; if (!mine || !mine[2] || p[0] > mine[0]) s.items[id] = p; }
+    return [s, { words: ids.length, studied: best.size, mastered: [...best.values()].filter(p => p[0] >= Srs.MASTERED).length }];
+  },
+};
 // LOGIC END
+
+// ───────────── Reading .apkg files (libraries load only when someone imports) ─────────────
+const loadScript = src => new Promise((ok, fail) => {
+  if (document.querySelector(`script[src="${src}"]`)) return ok();
+  const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => fail(new Error("Couldn't load the deck reader. Check your connection and try again.")); document.head.append(el);
+});
+async function readApkg(file) {
+  await loadScript("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js");
+  await loadScript("https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-asm.js");
+  let zip;
+  try { zip = await JSZip.loadAsync(file); } catch { throw new Error("That doesn't look like an Anki deck (.apkg)."); }
+  // collection.anki21 beats the legacy stub collection.anki2 that newer exports also carry.
+  const entry = zip.file("collection.anki21") || zip.file("collection.anki2");
+  if (!entry) throw new Error(zip.file("collection.anki21b")
+    ? 'This export uses Anki\'s newest format. Export again with "Support older Anki versions" ticked.'
+    : "That doesn't look like an Anki deck (.apkg).");
+  const SQL = await initSqlJs();
+  const db = new SQL.Database(new Uint8Array(await entry.async("arraybuffer")));
+  try {
+    const rows = (q, p) => { const st = db.prepare(q); if (p) st.bind(p); const out = []; while (st.step()) out.push(st.get()); st.free(); return out; };
+    const [[crt, models, decks]] = rows("select crt, models, decks from col");
+    // Field names per note type: col.models (schema 11) or the notetypes/fields tables (schema 18).
+    const fieldNames = new Map();
+    if (models && models.length > 2) for (const [id, m] of Object.entries(JSON.parse(models))) fieldNames.set(Number(id), m.flds.map(f => f.name));
+    else for (const [ntid, name] of rows("select ntid, name from fields order by ntid, ord")) { if (!fieldNames.has(ntid)) fieldNames.set(ntid, []); fieldNames.get(ntid).push(name); }
+    const notes = rows("select id, mid, flds from notes").map(([id, mid, flds]) => ({ id, fieldNames: fieldNames.get(mid) || [], fields: String(flds).split("\x1f") }));
+    const perDeck = new Map();
+    const cards = rows("select nid, type, queue, ivl, due, reps, lapses, did from cards").map(([noteId, type, queue, ivl, due, reps, lapses, did]) => {
+      perDeck.set(did, (perDeck.get(did) || 0) + 1); return { noteId, type, queue, ivl, due, reps, lapses };
+    });
+    const main = [...perDeck].sort((a, b) => b[1] - a[1])[0]?.[0];
+    let deckName = "Anki deck";
+    try { deckName = (decks && decks.length > 2 ? JSON.parse(decks)[main].name : rows("select name from decks where id = ?", [main])[0][0]) || deckName; } catch {}
+    return { deckName: String(deckName).split("::").pop(), crt, notes, cards };
+  } finally { db.close(); }
+}
 
 // ───────────── Storage: this browser, plus the viewer's own claude.ai record when available ─────────────
 const LS_KEY = "kanarush.v1";
@@ -617,6 +785,9 @@ const today = () => { const d = new Date(); return Math.floor((d.getTime() - d.g
 function normalize(x) { const s = { ...freshState(), ...(x || {}) }; s.items = s.items || {}; s.unitStars = s.unitStars || {}; s.achievements = s.achievements || []; return s; }
 function loadLocal() { try { const r = localStorage.getItem(LS_KEY); return r ? normalize(JSON.parse(r)) : freshState(); } catch { return freshState(); } }
 let state = loadLocal();
+// The imported Anki deck stays in this browser only (it is too big for the account record, and never ships with the page).
+const DECK_KEY = "kanarush.deck.v1";
+try { const d = JSON.parse(localStorage.getItem(DECK_KEY) || "null"); if (d?.words?.length) Course.install(d); } catch {}
 let remoteRef = null, syncStatus = "local";
 function save() {
   state.updatedAt = Date.now();
@@ -672,7 +843,7 @@ function chime(ok) {
 const buzz = ms => { try { navigator.vibrate?.(ms); } catch {} };
 
 // ───────────── UI state & actions ─────────────
-const ui = { screen: "home", tab: "learn", track: "hiragana", session: null, title: "", fb: null, endsAt: null, results: null, confirmReset: false, shakeKey: 0 };
+const ui = { screen: "home", tab: "learn", track: "hiragana", session: null, title: "", fb: null, endsAt: null, results: null, confirmReset: false, confirmRemove: false, shakeKey: 0, importing: false, notice: null };
 const LIGHTNING_MS = 60000;
 let timer = null, autoNext = null;
 const app = document.getElementById("app");
@@ -745,6 +916,23 @@ function finish() {
 }
 
 // ───────────── Rendering ─────────────
+// "食べる (たべる) = taberu · to eat", leaving out whatever the item doesn't have.
+function describe(it) {
+  const head = it.kind === "word" ? written(it) + (it.kanji ? ` (${it.jp})` : "") : it.jp + (it.kanji ? ` (${it.kanji})` : "");
+  const tail = [it.romaji, it.meaning].filter(Boolean).join(" · ");
+  return tail ? `${head} = ${tail}` : head;
+}
+function importCard() {
+  return `<section class="import"><h3>🀄 Bring your Anki deck</h3>
+    <p>Import a Japanese vocabulary deck (.apkg) and its words become a track here, with your Anki review history carried over.</p>
+    <p class="how">In Anki: File → Export → Anki Deck Package. Tick “Include scheduling information” and “Support older Anki versions”, untick media.</p>
+    <button class="cta" style="--c:var(--indigo)" data-act="import" ${ui.importing ? "disabled" : ""}>${ui.importing ? "Importing…" : "Import Anki deck"}</button></section>`;
+}
+function noticeHtml() {
+  if (!ui.notice) return "";
+  return `<section class="notice" style="--c:${ui.notice.ok ? "var(--good)" : "var(--bad)"}" role="status"><div><b>${esc(ui.notice.title)}</b><p>${esc(ui.notice.body)}</p></div>
+    <button class="x" data-act="notice-x" aria-label="Dismiss">✕</button></section>`;
+}
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const starStr = n => `<span class="stars" aria-label="${n} of 3 stars">${[0, 1, 2].map(i => i < n ? "<b>★</b>" : "★").join("")}</span>`;
 const fmtMult = m => `${m}×`;
@@ -753,7 +941,7 @@ function render() {
   if (ui.screen === "quiz") return renderQuiz();
   if (ui.screen === "results") return renderResults();
   const body = ui.tab === "learn" ? homeHtml() : ui.tab === "chart" ? chartHtml() : profileHtml();
-  app.innerHTML = `<main class="page">${body}</main>
+  app.innerHTML = `<main class="page">${noticeHtml()}${body}</main>
   <nav class="tabs" aria-label="Sections"><div class="tabs-in">
     ${[["learn", "🏠", "Learn"], ["chart", "あ", "Chart"], ["profile", "🏆", "Profile"]].map(([k, i, l]) =>
       `<button data-act="tab" data-v="${k}" ${ui.tab === k ? 'aria-current="page"' : ""}><span>${i}</span>${l}</button>`).join("")}
@@ -770,7 +958,7 @@ function homeHtml() {
   const lvl = Gamify.level(s.totalXp), [inL, span] = Gamify.levelProgress(s.totalXp);
   const streak = P.streakNow(s, t), practiced = s.lastPracticeDay === t;
   const txp = P.todayXp(s, t), claimed = s.goalClaimedDay === t;
-  const next = P.nextUnit(s);
+  const next = P.nextUnit(s, ui.track);
   const due = P.due(s, Date.now()).length, canReview = P.seenItems(s).length > 0;
   const zig = [0, 30, 60, 30];
   const units = Course.unitsOf(ui.track);
@@ -797,6 +985,7 @@ function homeHtml() {
     <button class="mode" style="--c:var(--flame)" data-act="lightning"><div class="ico">⚡</div><h3>Lightning</h3><p class="num">60 seconds · best ${s.lightningBest}</p></button>
   </div>
   ${trackSeg()}
+  ${ui.track === "deck" && !units.length ? importCard() : ""}
   <div class="path">${units.map((u, i) => {
     const st = s.unitStars[u.id] || 0, open = P.isUnlocked(s, u), sc = P.seenCount(s, u);
     const c = !open ? "color-mix(in srgb, var(--muted) 40%, transparent)" : st === 3 ? "var(--gold)" : st ? "var(--good)" : "var(--accent)";
@@ -826,15 +1015,17 @@ function renderQuiz() {
     const it = st.teach;
     stage = `<div class="teach"><span class="pill" style="--c:var(--accent)">✨ NEW</span>
       <button class="card" data-act="speak" data-v="${esc(it.jp)}" aria-label="Hear ${esc(it.jp)}">
-        <span class="kana ${it.kind === "kana" ? "big" : "word"}" style="--n:${[...it.jp].length}">${esc(it.jp)}</span>
-        ${it.kanji ? `<span class="kanji kana">${esc(it.kanji)}</span>` : ""}
-        <span class="ro">${esc(it.romaji)}</span>${it.meaning ? `<span class="mean">${esc(it.meaning)}</span>` : ""}
+        <span class="kana ${it.kind === "kana" ? "big" : "word"}" style="--n:${[...written(it)].length}">${esc(written(it))}</span>
+        ${(it.kind === "word" ? (it.kanji && it.jp) : it.kanji) ? `<span class="kanji kana">${esc(it.kind === "word" ? it.jp : it.kanji)}</span>` : ""}
+        ${it.romaji ? `<span class="ro">${esc(it.romaji)}</span>` : ""}${it.meaning ? `<span class="mean">${esc(it.meaning)}</span>` : ""}
+        ${it.sentence ? `<span class="ex kana">${esc(it.sentence)}</span>` : ""}${it.sentenceEn ? `<span class="ex-en">${esc(it.sentenceEn)}</span>` : ""}
       </button><span class="say" style="color:var(--muted)">🔊 Tap the card to hear it</span></div>
       <button class="cta" data-act="next">Got it!</button>`;
   } else if (st?.ask) {
+    // Reading the word aloud is a hint, except when its reading is the question (k2read).
     const q = st.ask, jpPrompt = q.type === "k2r" || q.type === "w2m", jpOpts = !jpPrompt;
-    const instr = { k2r: "What sound is this?", r2k: "Pick the kana", w2m: "What does this mean?", m2w: "How do you say this?" }[q.type];
-    const cls = { k2r: "kana big", w2m: "kana word", r2k: "mid", m2w: "en" }[q.type];
+    const instr = { k2r: "What sound is this?", r2k: "Pick the kana", w2m: "What does this mean?", m2w: "How do you say this?", k2read: "How do you read this?" }[q.type];
+    const cls = { k2r: "kana big", w2m: "kana word", r2k: "mid", m2w: "en", k2read: "kana word" }[q.type];
     const wide = q.options.some(o => o.length > (jpOpts ? 4 : 7));
     const promptInner = `<span class="${cls}" style="--n:${[...q.prompt].length}">${esc(q.prompt)}</span>${q.hint ? `<span class="hint kana">${esc(q.hint)}</span>` : ""}${jpPrompt && !light ? `<span class="say">🔊 tap to hear</span>` : ""}`;
     stage = `<p class="instr">${instr}${q.retry ? " · try again" : ""}</p>
@@ -846,7 +1037,7 @@ function renderQuiz() {
   }
   let sheet = "";
   if (fb && st?.ask) {
-    const it = st.ask.item, line = `${esc(it.jp)}${it.kanji ? ` (${esc(it.kanji)})` : ""} = ${esc(it.romaji)}${it.meaning ? ` · ${esc(it.meaning)}` : ""}`;
+    const it = st.ask.item, line = esc(describe(it));
     sheet = fb.ok
       ? `<div class="sheet" style="--c:var(--good)"><div class="sheet-in"><h3>${pick(Gamify.cheers)}<span class="num">+${fb.gained} XP</span></h3><p class="kana">${line}</p></div></div>`
       : `<div class="sheet" style="--c:var(--bad)"><div class="sheet-in"><h3>Not quite</h3><p class="kana">${line}</p>
@@ -905,9 +1096,10 @@ function chartHtml() {
     : box(s, id) >= Srs.MASTERED ? "color-mix(in srgb, var(--gold) 40%, transparent)"
     : `color-mix(in srgb, var(--accent) ${12 + box(s, id) * 10}%, transparent)`;
   const groups = Course.unitsOf(t).map(u => {
-    if (t === "vocab") return `<div class="grp"><h3>${esc(u.title)} · ${esc(u.subtitle)}</h3><div class="words">${u.items.map(i =>
-      `<button class="wrow" style="--m:${tone(i.id)}" data-act="speak" data-v="${esc(i.jp)}"><div><span class="kana">${esc(i.jp)}</span>${i.kanji ? ` <span class="kana" style="color:var(--muted)">${esc(i.kanji)}</span>` : ""}<small>${esc(i.romaji)}</small></div>
-       <div>${esc(i.meaning)}</div><span class="dots" aria-label="Memory level ${box(s, i.id)} of 5">${[0, 1, 2, 3, 4].map(k => `<i class="${k < box(s, i.id) ? "on" : ""}"></i>`).join("")}</span></button>`).join("")}</div></div>`;
+    if (t === "vocab" || t === "deck") return `<div class="grp"><h3>${esc(u.title)} · <span class="kana">${esc(u.subtitle)}</span></h3><div class="words">${u.items.map(i => {
+      const second = i.kind === "word" ? (i.kanji ? i.jp : null) : i.kanji;
+      return `<button class="wrow" style="--m:${tone(i.id)}" data-act="speak" data-v="${esc(i.jp)}"><div><span class="kana">${esc(written(i))}</span>${second ? ` <span class="kana" style="color:var(--muted)">${esc(second)}</span>` : ""}<small>${esc(i.romaji)}</small></div>
+       <div>${esc(i.meaning)}</div><span class="dots" aria-label="Memory level ${box(s, i.id)} of 5">${[0, 1, 2, 3, 4].map(k => `<i class="${k < box(s, i.id) ? "on" : ""}"></i>`).join("")}</span></button>`; }).join("")}</div></div>`;
     const combo = u.items[0].jp.length > 1;
     return `<div class="grp"><h3>${esc(u.title)}</h3><div class="grid ${combo ? "combo3" : ""}">${u.items.map(i =>
       `<button class="cell" style="--m:${tone(i.id)}" data-act="speak" data-v="${esc(i.jp)}" aria-label="${esc(i.jp)} ${esc(i.romaji)}"><span class="kana">${esc(i.jp)}</span><small>${esc(i.romaji)}</small></button>`).join("")}</div></div>`;
@@ -923,6 +1115,8 @@ function profileHtml() {
   const kana = Course.items.filter(i => i.kind === "kana"), words = Course.itemsOf("vocab");
   const stats = [["⭐", Gamify.level(s.totalXp), "Level"], ["⚡", s.totalXp, "Total XP"], ["🔥", s.bestStreak, "Best streak"], ["☄️", s.bestCombo, "Best combo"],
     ["⏱️", s.lightningBest, "Lightning best"], ["🎌", s.sessions, "Sessions"], ["あ", `${P.mastered(s, kana)}/${kana.length}`, "Kana mastered"], ["📚", `${P.mastered(s, words)}/${words.length}`, "Words mastered"]];
+  const deckItems = Course.itemsOf("deck");
+  if (Course.deckName) stats.push(["🀄", `${P.mastered(s, deckItems)}/${deckItems.length}`, "Anki words mastered"], ["🃏", deckItems.filter(i => seen(s, i.id)).length, "Anki words studied"]);
   return `<h2 class="title">Profile</h2>
   <div class="stats">${stats.map(([e, v, l]) => `<div class="stat"><b class="num">${e} ${v}</b><small>${l}</small></div>`).join("")}</div>
   <h3 class="sec">Daily goal</h3>
@@ -930,6 +1124,13 @@ function profileHtml() {
     `<button data-act="goal" data-v="${x}" aria-pressed="${s.dailyGoal === x}"><b>${n}</b><small class="num">${x} XP</small></button>`).join("")}</div>
   <div class="row"><div><b>Sound</b><small>Japanese voice and answer chimes</small></div>
     <button class="switch" role="switch" id="sound" aria-label="Sound" aria-checked="${s.sound}" data-act="sound"></button></div>
+  <h3 class="sec">Anki deck</h3>
+  ${!Course.deckName ? importCard() : ui.confirmRemove
+    ? `<div class="confirm"><p><b>Remove the Anki deck?</b> Its words leave this browser. Your progress on them is kept, so importing the deck again brings it all back.</p>
+       <div><button data-act="deck-keep">Cancel</button><button class="yes" data-act="deck-remove-yes">Remove</button></div></div>`
+    : `<div class="row"><div><b>🀄 ${esc(Course.deckName)}</b><small class="num">${deckItems.length} words · import again to refresh your Anki history</small></div>
+       <button class="ghost small" data-act="import" ${ui.importing ? "disabled" : ""}>${ui.importing ? "Importing…" : "Re-import"}</button>
+       <button class="danger" data-act="deck-remove">Remove</button></div>`}
   <h3 class="sec">Achievements · <span class="num">${s.achievements.length}/${ACHIEVEMENTS.length}</span></h3>
   ${ACHIEVEMENTS.map(a => { const got = s.achievements.includes(a.key);
     return `<div class="ach ${got ? "got" : ""}"><span>${got ? a.emoji : "🔒"}</span><div><b>${a.title}</b><small>${a.desc}</small></div></div>`; }).join("")}
@@ -984,6 +1185,13 @@ app.addEventListener("click", e => {
     case "sound": state.sound = !state.sound; save(); render(); document.getElementById("sound")?.focus(); break;
     case "reset": ui.confirmReset = true; render(); break;
     case "reset-no": ui.confirmReset = false; render(); break;
+    case "import": document.getElementById("apkg").click(); break;
+    case "notice-x": ui.notice = null; render(); break;
+    case "deck-remove": ui.confirmRemove = true; render(); break;
+    case "deck-keep": ui.confirmRemove = false; render(); break;
+    case "deck-remove-yes":
+      try { localStorage.removeItem(DECK_KEY); } catch {}
+      Course.install(null); ui.confirmRemove = false; if (ui.track === "deck") ui.track = "hiragana"; render(); break;
     case "reset-yes": state = { ...freshState(), dailyGoal: state.dailyGoal, sound: state.sound }; ui.confirmReset = false; save(); render(); break;
   }
 });
@@ -992,6 +1200,26 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") return quit();
   if (/^[1-4]$/.test(e.key) && ui.session?.current?.ask && !ui.fb) answer(+e.key - 1);
   else if (e.key === "Enter" && (ui.fb || ui.session?.current?.teach)) { e.preventDefault(); next(); }
+});
+document.getElementById("apkg").addEventListener("change", async e => {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file || ui.importing) return;
+  ui.importing = true; ui.notice = null; render();
+  try {
+    const col = await readApkg(file);
+    const deck = Anki.deck(col);
+    Course.install(deck);
+    try { localStorage.setItem(DECK_KEY, JSON.stringify(deck)); } catch {}
+    const [ns, r] = Anki.merge(state, col);
+    state = ns; save();
+    ui.track = "deck"; ui.tab = "learn";
+    ui.notice = { ok: true, title: `Imported ${deck.name}`, body: `${r.words} words added as the Anki track.` + (r.studied ? ` Your Anki history carried over: ${r.studied} studied, ${r.mastered} mastered.` : "") };
+  } catch (err) {
+    ui.notice = { ok: false, title: "Couldn't import that deck", body: err?.message || "The file couldn't be read as an Anki deck (.apkg)." };
+  } finally {
+    ui.importing = false; render(); window.scrollTo(0, 0);
+  }
 });
 render();
 </script>

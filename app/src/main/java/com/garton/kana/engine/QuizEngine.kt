@@ -9,7 +9,7 @@ import kotlin.random.Random
 
 enum class SessionMode { LESSON, REVIEW, LIGHTNING }
 
-enum class QuestionType { KANA_TO_ROMAJI, ROMAJI_TO_KANA, WORD_TO_MEANING, MEANING_TO_WORD }
+enum class QuestionType { KANA_TO_ROMAJI, ROMAJI_TO_KANA, WORD_TO_MEANING, MEANING_TO_WORD, KANJI_TO_READING }
 
 data class Question(
     val item: StudyItem,
@@ -20,9 +20,10 @@ data class Question(
     val correctIndex: Int,
     val isRetry: Boolean = false,
 ) {
-    /** Japanese is on screen in the prompt, so it can be read aloud right away. */
-    val promptIsJapanese: Boolean get() = type == QuestionType.KANA_TO_ROMAJI || type == QuestionType.WORD_TO_MEANING
-    val optionsAreJapanese: Boolean get() = !promptIsJapanese
+    val promptIsJapanese: Boolean get() = type != QuestionType.ROMAJI_TO_KANA && type != QuestionType.MEANING_TO_WORD
+    val optionsAreJapanese: Boolean get() = !promptIsJapanese || type == QuestionType.KANJI_TO_READING
+    /** Saying the word aloud is a hint, except when its reading is the question. */
+    val speakOnShow: Boolean get() = promptIsJapanese && type != QuestionType.KANJI_TO_READING
 }
 
 sealed interface Step {
@@ -36,18 +37,26 @@ class QuizEngine(private val random: Random = Random.Default) {
         QuestionType.KANA_TO_ROMAJI -> item.romaji
         QuestionType.ROMAJI_TO_KANA -> item.japanese
         QuestionType.WORD_TO_MEANING -> item.meaning
-        QuestionType.MEANING_TO_WORD -> item.japanese
+        QuestionType.MEANING_TO_WORD -> if (item.kind == ItemKind.WORD) item.written else item.japanese
+        QuestionType.KANJI_TO_READING -> item.japanese
     }
 
     fun promptOf(item: StudyItem, type: QuestionType): String = when (type) {
-        QuestionType.KANA_TO_ROMAJI, QuestionType.WORD_TO_MEANING -> item.japanese
+        QuestionType.KANA_TO_ROMAJI -> item.japanese
+        QuestionType.WORD_TO_MEANING -> if (item.kind == ItemKind.WORD) item.written else item.japanese
         QuestionType.ROMAJI_TO_KANA -> item.romaji
         QuestionType.MEANING_TO_WORD -> item.meaning
+        QuestionType.KANJI_TO_READING -> item.written
     }
 
     fun types(item: StudyItem): List<QuestionType> = when (item.kind) {
         ItemKind.KANA -> listOf(QuestionType.KANA_TO_ROMAJI, QuestionType.ROMAJI_TO_KANA)
         ItemKind.VOCAB -> listOf(QuestionType.WORD_TO_MEANING, QuestionType.MEANING_TO_WORD)
+        ItemKind.WORD -> if (item.kanji != null) {
+            listOf(QuestionType.WORD_TO_MEANING, QuestionType.MEANING_TO_WORD, QuestionType.KANJI_TO_READING)
+        } else {
+            listOf(QuestionType.WORD_TO_MEANING, QuestionType.MEANING_TO_WORD)
+        }
     }
 
     fun question(item: StudyItem, pool: List<StudyItem>, type: QuestionType = types(item).random(random)): Question {
@@ -60,7 +69,7 @@ class QuizEngine(private val random: Random = Random.Default) {
         val fallback = Course.items.filter(::valid).shuffled(random)
         val distractors = (sameUnitFirst + fallback).map { answerOf(it, type) }.distinct().take(3)
         val options = (distractors + answer).shuffled(random)
-        val hint = if (type == QuestionType.WORD_TO_MEANING) item.kanji else null
+        val hint = if (type == QuestionType.WORD_TO_MEANING && item.kind == ItemKind.VOCAB) item.kanji else null
         return Question(item, type, prompt, hint, options, options.indexOf(answer))
     }
 

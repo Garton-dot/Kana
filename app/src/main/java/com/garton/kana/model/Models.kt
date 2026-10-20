@@ -1,11 +1,13 @@
 package com.garton.kana.model
 
-enum class ItemKind { KANA, VOCAB }
+enum class ItemKind { KANA, VOCAB, WORD }
 
 enum class Track(val title: String, val native: String, val emoji: String) {
     HIRAGANA("Hiragana", "ひらがな", "🌸"),
     KATAKANA("Katakana", "カタカナ", "⚡"),
     VOCAB("Vocabulary", "ことば", "📚"),
+    /** Words imported from the learner's own Anki deck; empty until they import one. */
+    DECK("Anki deck", "Anki", "🀄"),
 }
 
 /** One learnable thing: a kana (or kana combo) or a vocabulary word. */
@@ -20,7 +22,13 @@ data class StudyItem(
     val meaning: String = "",
     /** Kanji spelling, vocab only, when commonly written with kanji. */
     val kanji: String? = null,
-)
+    /** Example sentence and its translation, imported deck words only. */
+    val sentence: String? = null,
+    val sentenceMeaning: String? = null,
+) {
+    /** How the word is written: kanji when it has them, else kana. */
+    val written: String get() = kanji ?: japanese
+}
 
 data class StudyUnit(
     val id: String,

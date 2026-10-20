@@ -80,7 +80,7 @@ fun QuizScreen(vm: KanaViewModel, quiz: QuizUi) {
     LaunchedEffect(quiz.stepNumber) {
         when (step) {
             is Step.Teach -> vm.speak(step.item.japanese)
-            is Step.Ask -> if (step.question.promptIsJapanese && quiz.mode != SessionMode.LIGHTNING) vm.speak(step.question.item.japanese)
+            is Step.Ask -> if (step.question.speakOnShow && quiz.mode != SessionMode.LIGHTNING) vm.speak(step.question.item.japanese)
             null -> Unit
         }
     }
@@ -216,11 +216,24 @@ private fun TeachCard(item: StudyItem, onSpeak: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                FittedText(item.japanese, if (item.kind == ItemKind.KANA) 120.sp else 72.sp)
-                item.kanji?.let { Text(it, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Text(item.romaji, fontSize = 34.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura)
+                val word = item.kind == ItemKind.WORD
+                FittedText(if (word) item.written else item.japanese, if (item.kind == ItemKind.KANA) 120.sp else 72.sp)
+                // Vocab shows its kanji under the kana; deck words show their reading under the kanji.
+                (if (word) item.kanji?.let { item.japanese } else item.kanji)?.let {
+                    Text(it, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (item.romaji.isNotEmpty()) {
+                    Text(item.romaji, fontSize = 30.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura, textAlign = TextAlign.Center)
+                }
                 if (item.meaning.isNotEmpty()) {
                     Text(item.meaning, fontSize = 22.sp, textAlign = TextAlign.Center)
+                }
+                item.sentence?.let {
+                    Spacer(Modifier.height(14.dp))
+                    Text(it, fontSize = 19.sp, textAlign = TextAlign.Center)
+                }
+                item.sentenceMeaning?.let {
+                    Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -266,13 +279,13 @@ private fun AskCard(question: Question, feedback: Feedback?, onSpeak: () -> Unit
                 .weight(1f)
                 .fillMaxWidth()
                 .offset { IntOffset(shake.value.roundToInt(), 0) }
-                .clickable(enabled = question.promptIsJapanese, onClick = onSpeak),
+                .clickable(enabled = question.speakOnShow, onClick = onSpeak),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 when (question.type) {
                     QuestionType.KANA_TO_ROMAJI -> FittedText(question.prompt, 120.sp)
-                    QuestionType.WORD_TO_MEANING -> FittedText(question.prompt, 72.sp)
+                    QuestionType.WORD_TO_MEANING, QuestionType.KANJI_TO_READING -> FittedText(question.prompt, 72.sp)
                     QuestionType.ROMAJI_TO_KANA -> FittedText(question.prompt, 64.sp)
                     QuestionType.MEANING_TO_WORD -> Text(
                         question.prompt,
@@ -283,7 +296,7 @@ private fun AskCard(question: Question, feedback: Feedback?, onSpeak: () -> Unit
                     )
                 }
                 question.hint?.let { Text(it, fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (question.promptIsJapanese) Text("🔊", fontSize = 20.sp)
+                if (question.speakOnShow) Text("🔊", fontSize = 20.sp)
             }
         }
         val japaneseOptions = question.optionsAreJapanese
@@ -307,7 +320,7 @@ private fun AskCard(question: Question, feedback: Feedback?, onSpeak: () -> Unit
             }
         }
         // Room for the feedback banner so it never hides the options.
-        Spacer(Modifier.height(150.dp))
+        Spacer(Modifier.height(210.dp))
     }
 }
 
@@ -316,6 +329,7 @@ private fun instruction(type: QuestionType) = when (type) {
     QuestionType.ROMAJI_TO_KANA -> "Pick the kana"
     QuestionType.WORD_TO_MEANING -> "What does this mean?"
     QuestionType.MEANING_TO_WORD -> "How do you say this?"
+    QuestionType.KANJI_TO_READING -> "How do you read this?"
 }
 
 @Composable
@@ -366,11 +380,11 @@ private fun FeedbackBanner(feedback: Feedback, question: Question, mode: Session
                 Spacer(Modifier.weight(1f))
                 Text("+${feedback.xpGained} XP", color = KanaColors.Gold, fontWeight = FontWeight.Black, fontSize = 22.sp)
             }
-            Text("${item.japanese} = ${item.romaji}${if (item.meaning.isNotEmpty()) " · ${item.meaning}" else ""}", color = color)
+            Text(describe(item), color = color)
         } else {
             Text("Not quite!", color = color, fontWeight = FontWeight.Black, fontSize = 24.sp)
             Text(
-                "${item.japanese}${item.kanji?.let { " ($it)" } ?: ""} = ${item.romaji}${if (item.meaning.isNotEmpty()) " · ${item.meaning}" else ""}",
+                describe(item),
                 color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold,
             )
             if (mode != SessionMode.LIGHTNING) {
@@ -380,6 +394,13 @@ private fun FeedbackBanner(feedback: Feedback, question: Question, mode: Session
             }
         }
     }
+}
+
+/** "食べる (たべる) = taberu · to eat", leaving out whatever the item doesn't have. */
+private fun describe(item: StudyItem): String {
+    val head = if (item.kind == ItemKind.WORD) item.written + (item.kanji?.let { " (${item.japanese})" } ?: "")
+    else item.japanese + (item.kanji?.let { " ($it)" } ?: "")
+    return head + listOf(item.romaji, item.meaning).filter { it.isNotEmpty() }.joinToString(" · ").let { if (it.isEmpty()) "" else " = $it" }
 }
 
 @Composable

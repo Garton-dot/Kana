@@ -48,11 +48,12 @@ import com.garton.kana.model.StudyUnit
 import com.garton.kana.model.Track
 
 @Composable
-fun HomeScreen(vm: KanaViewModel, padding: PaddingValues) {
+fun HomeScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Unit) {
     val state = vm.progress
     val today = vm.today()
+    vm.deckVersion // re-read Course when a deck is imported
     val units = Course.units(vm.track)
-    val next = Progression.nextUnit(state)
+    val next = Progression.nextUnit(state, vm.track)
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -98,6 +99,26 @@ fun HomeScreen(vm: KanaViewModel, padding: PaddingValues) {
                 unlocked = Progression.isUnlocked(state, unit),
                 isNext = unit == next,
             ) { vm.startLesson(unit) }
+        }
+        if (vm.track == Track.DECK && units.isEmpty()) item { ImportCard(vm.importing, onImport) }
+    }
+}
+
+@Composable
+fun ImportCard(importing: Boolean, onImport: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(20.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("🀄 Bring your Anki deck", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Import a Japanese vocabulary deck (.apkg) and its words become a track here, with your Anki review history carried over.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "In Anki: File → Export → Anki Deck Package, tick \"Include scheduling information\" and \"Support older Anki versions\", untick media.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            BigButton(if (importing) "Importing…" else "Import Anki deck", KanaColors.Indigo, onClick = { if (!importing) onImport() })
         }
     }
 }

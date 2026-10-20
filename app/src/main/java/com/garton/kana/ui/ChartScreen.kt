@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.garton.kana.data.Course
 import com.garton.kana.engine.Progression
 import com.garton.kana.engine.Srs
+import com.garton.kana.model.ItemKind
 import com.garton.kana.model.StudyItem
 import com.garton.kana.model.Track
 
@@ -40,8 +41,10 @@ import com.garton.kana.model.Track
 fun ChartScreen(vm: KanaViewModel, padding: PaddingValues) {
     val state = vm.progress
     val track = vm.track
+    vm.deckVersion // re-read Course when a deck is imported
+    val list = track == Track.VOCAB || track == Track.DECK
     val units = Course.units(track)
-    val columns = if (track == Track.VOCAB) 1 else 15
+    val columns = if (list) 1 else 15
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
@@ -74,14 +77,14 @@ fun ChartScreen(vm: KanaViewModel, padding: PaddingValues) {
             }
             // Kana cells span 3 of 15 columns (5 per row); combos span 5 (3 per row).
             val cellSpan = when {
-                track == Track.VOCAB -> 1
+                list -> 1
                 unit.items.first().japanese.length > 1 -> 5
                 else -> 3
             }
             items(unit.items, span = { GridItemSpan(cellSpan) }) { item ->
                 val box = state.items[item.id]?.box ?: 0
                 val seen = (state.items[item.id]?.seen ?: 0) > 0
-                if (track == Track.VOCAB) WordRow(item, box, seen) { vm.speak(item.japanese) }
+                if (list) WordRow(item, box, seen) { vm.speak(item.japanese) }
                 else KanaCell(item, box, seen) { vm.speak(item.japanese) }
             }
         }
@@ -123,7 +126,8 @@ private fun WordRow(item: StudyItem, box: Int, seen: Boolean, onClick: () -> Uni
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(item.japanese + (item.kanji?.let { "  $it" } ?: ""), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            val (main, second) = if (item.kind == ItemKind.WORD) item.written to item.kanji?.let { item.japanese } else item.japanese to item.kanji
+            Text(main + (second?.let { "  $it" } ?: ""), fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text(item.romaji, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(item.meaning, fontSize = 15.sp, modifier = Modifier.weight(1f))

@@ -7,6 +7,7 @@ An Android app for learning **hiragana**, **katakana** and **beginner vocabulary
 - **208 kana**: all basic hiragana and katakana, dakuten/handakuten, and combo sounds (きゃ, シュ…), in 18 units per script.
 - **125 words** across Lessons 1–5: greetings & people, things & shopping, daily life, places & time, adjectives & travel. Each word has romaji, meaning and kanji where it's commonly used.
 - **Teach → quiz flow**: new items appear as cards (with Japanese audio) and are quizzed right away; mistakes come back at the end of the session.
+- **Your Anki deck**: import any Japanese vocabulary deck (.apkg) and it becomes a fourth track, in sets of 25 words with readings, meanings and example sentences. Your Anki review history carries over, so studied words keep their intervals. The deck stays on your device and is never bundled with the app. Export from Anki with "Include scheduling information" and "Support older Anki versions" ticked and media unticked.
 - **Spaced repetition**: every item moves through 6 boxes (10 min → 1 day → 3 days → 1 week → 3 weeks). The Review card shows what's due.
 - **Audio**: everything is spoken with the phone's Japanese text-to-speech voice.
 

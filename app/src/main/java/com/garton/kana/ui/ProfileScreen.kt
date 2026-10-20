@@ -40,8 +40,10 @@ import com.garton.kana.model.Track
 private val GOALS = listOf(50 to "Casual", 100 to "Regular", 200 to "Serious", 300 to "Insane")
 
 @Composable
-fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues) {
+fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Unit) {
     val state = vm.progress
+    vm.deckVersion // re-read Course when a deck is imported
+    var confirmRemove by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -62,7 +64,14 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues) {
                 Triple("🎌", "Sessions", "${state.sessions}"),
                 Triple("あ", "Kana mastered", "${Progression.masteredCount(state, Course.items.filter { it.kind == ItemKind.KANA })}/208"),
                 Triple("📚", "Words mastered", "${Progression.masteredCount(state, Course.items(Track.VOCAB))}/${Course.items(Track.VOCAB).size}"),
-            )
+            ) + if (Course.deckName != null) {
+                listOf(
+                    Triple("🀄", "Anki words mastered", "${Progression.masteredCount(state, Course.items(Track.DECK))}/${Course.items(Track.DECK).size}"),
+                    Triple("🃏", "Anki words studied", "${Course.items(Track.DECK).count { (state.items[it.id]?.seen ?: 0) > 0 }}"),
+                )
+            } else {
+                emptyList()
+            }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 stats.chunked(2).forEach { pair ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -111,6 +120,29 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues) {
             }
         }
 
+        item { Text("Anki deck", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp)) }
+        item {
+            val name = Course.deckName
+            if (name == null) {
+                ImportCard(vm.importing, onImport)
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("🀄 $name", fontWeight = FontWeight.Bold)
+                        Text(
+                            "${Course.items(Track.DECK).size} words · import again to refresh your Anki history",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = onImport, enabled = !vm.importing) { Text(if (vm.importing) "Importing…" else "Re-import") }
+                    TextButton(onClick = { confirmRemove = true }) { Text("Remove", color = KanaColors.Wrong) }
+                }
+            }
+        }
+
         item {
             Text(
                 "Achievements · ${state.achievements.size}/${Achievement.entries.size}",
@@ -143,6 +175,18 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues) {
                 Text("Reset all progress", color = KanaColors.Wrong)
             }
         }
+    }
+
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text("Remove the Anki deck?") },
+            text = { Text("Its words leave the app. Your progress on them is kept, so importing the deck again brings it all back.") },
+            confirmButton = {
+                TextButton(onClick = { vm.removeDeck(); confirmRemove = false }) { Text("Remove", color = KanaColors.Wrong) }
+            },
+            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+        )
     }
 
     if (confirmReset) {
