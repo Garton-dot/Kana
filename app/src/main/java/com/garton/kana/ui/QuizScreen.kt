@@ -41,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -62,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.garton.kana.engine.Feedback
 import com.garton.kana.engine.Gamify
+import com.garton.kana.engine.KanaPool
 import com.garton.kana.engine.Question
 import com.garton.kana.engine.QuestionType
 import com.garton.kana.engine.SessionMode
@@ -77,12 +79,14 @@ fun QuizScreen(vm: KanaViewModel, quiz: QuizUi) {
     val haptics = LocalHapticFeedback.current
     val step = quiz.step
     val feedback = quiz.feedback
+    // Lightning and the hiragana check move on by themselves and stay silent.
+    val rapid = quiz.mode == SessionMode.LIGHTNING || quiz.mode == SessionMode.CHECK
 
     // Read Japanese aloud as soon as it appears.
     LaunchedEffect(quiz.stepNumber) {
         when (step) {
             is Step.Teach -> vm.speak(step.item.japanese)
-            is Step.Ask -> if (step.question.speakOnShow && quiz.mode != SessionMode.LIGHTNING) vm.speak(step.question.item.japanese)
+            is Step.Ask -> if (step.question.speakOnShow && !rapid) vm.speak(step.question.item.japanese)
             null -> Unit
         }
     }
@@ -92,14 +96,14 @@ fun QuizScreen(vm: KanaViewModel, quiz: QuizUi) {
         if (feedback == null || step !is Step.Ask) return@LaunchedEffect
         if (feedback.correct) {
             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            if (quiz.mode != SessionMode.LIGHTNING) vm.speak(step.question.item.japanese)
-            delay(if (quiz.mode == SessionMode.LIGHTNING) 250 else 750)
+            if (!rapid) vm.speak(step.question.item.japanese)
+            delay(if (rapid) 250 else 750)
             vm.next()
         } else {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            if (quiz.mode != SessionMode.LIGHTNING) vm.speak(step.question.item.japanese)
-            if (quiz.mode == SessionMode.LIGHTNING) {
-                delay(700)
+            if (!rapid) vm.speak(step.question.item.japanese)
+            if (rapid) {
+                delay(if (quiz.mode == SessionMode.CHECK) 1100 else 700)
                 vm.next()
             }
         }
@@ -134,7 +138,7 @@ fun QuizScreen(vm: KanaViewModel, quiz: QuizUi) {
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            if (feedback != null && step is Step.Ask) FeedbackBanner(vm, feedback, step.question, quiz.mode) { vm.next() }
+            if (feedback != null && step is Step.Ask) FeedbackBanner(vm, feedback, step.question, quiz.mode, quiz.slips) { vm.next() }
         }
     }
 }
@@ -231,8 +235,14 @@ private fun TeachCard(vm: KanaViewModel, item: StudyItem, onSpeak: () -> Unit) {
                     (if (word) item.kanji?.let { item.japanese } else item.kanji)?.let {
                         Text(it, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    // Kana cards teach the romaji; for words it's hidden by default so the kana get read.
                     if (item.romaji.isNotEmpty()) {
-                        Text(item.romaji, fontSize = 30.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura, textAlign = TextAlign.Center)
+                        var revealed by remember(item.id) { mutableStateOf(false) }
+                        if (item.kind == ItemKind.KANA || vm.progress.showRomaji || revealed) {
+                            Text(item.romaji, fontSize = 30.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura, textAlign = TextAlign.Center)
+                        } else {
+                            TextButton(onClick = { revealed = true }) { Text("Show romaji", color = KanaColors.Sakura) }
+                        }
                     }
                     if (item.meaning.isNotEmpty()) {
                         Text(item.meaning, fontSize = 22.sp, textAlign = TextAlign.Center)
@@ -251,6 +261,10 @@ private fun TeachCard(vm: KanaViewModel, item: StudyItem, onSpeak: () -> Unit) {
             item.kanji?.let {
                 Spacer(Modifier.height(14.dp))
                 MnemonicPanel(vm, it, editable = true)
+            }
+            if (item.kind != ItemKind.KANA) {
+                Spacer(Modifier.height(14.dp))
+                KanaTagRow(vm, item.japanese)
             }
         }
     }
@@ -377,7 +391,7 @@ private fun OptionButton(
 }
 
 @Composable
-private fun FeedbackBanner(vm: KanaViewModel, feedback: Feedback, question: Question, mode: SessionMode, onContinue: () -> Unit) {
+private fun FeedbackBanner(vm: KanaViewModel, feedback: Feedback, question: Question, mode: SessionMode, slips: List<StudyItem>, onContinue: () -> Unit) {
     val color = if (feedback.correct) KanaColors.Correct else KanaColors.Wrong
     val item = question.item
     Column(
@@ -394,14 +408,20 @@ private fun FeedbackBanner(vm: KanaViewModel, feedback: Feedback, question: Ques
                 Spacer(Modifier.weight(1f))
                 Text("+${feedback.xpGained} XP", color = KanaColors.Gold, fontWeight = FontWeight.Black, fontSize = 22.sp)
             }
-            Text(describe(item), color = color)
+            Text(describe(item, vm.progress.showRomaji), color = color)
         } else {
             Text("Not quite!", color = color, fontWeight = FontWeight.Black, fontSize = 24.sp)
             Text(
-                describe(item),
+                describe(item, vm.progress.showRomaji),
                 color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold,
             )
-            if (mode != SessionMode.LIGHTNING) {
+            if (slips.isNotEmpty()) {
+                Text(
+                    "📌 Added ${slips.joinToString(" ") { it.japanese }} to My kana",
+                    color = KanaColors.Indigo, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                )
+            }
+            if (mode != SessionMode.LIGHTNING && mode != SessionMode.CHECK) {
                 item.kanji?.let {
                     Spacer(Modifier.height(8.dp))
                     MnemonicPanel(vm, it, editable = false, compact = true, maxKanji = 2)
@@ -414,11 +434,38 @@ private fun FeedbackBanner(vm: KanaViewModel, feedback: Feedback, question: Ques
     }
 }
 
-/** "食べる (たべる) = taberu · to eat", leaving out whatever the item doesn't have. */
-private fun describe(item: StudyItem): String {
+/** "食べる (たべる) = taberu · to eat", leaving out whatever the item doesn't have (and word romaji unless asked for). */
+private fun describe(item: StudyItem, showRomaji: Boolean): String {
     val head = if (item.kind == ItemKind.WORD) item.written + (item.kanji?.let { " (${item.japanese})" } ?: "")
     else item.japanese + (item.kanji?.let { " ($it)" } ?: "")
-    return head + listOf(item.romaji, item.meaning).filter { it.isNotEmpty() }.joinToString(" · ").let { if (it.isEmpty()) "" else " = $it" }
+    val romaji = if (item.kind == ItemKind.KANA || showRomaji) item.romaji else ""
+    return head + listOf(romaji, item.meaning).filter { it.isNotEmpty() }.joinToString(" · ").let { if (it.isEmpty()) "" else " = $it" }
+}
+
+/** The word's kana as chips: tap one you can't read to add it to My kana (tap again to remove). */
+@Composable
+fun KanaTagRow(vm: KanaViewModel, reading: String) {
+    val kana = KanaPool.itemsIn(reading).distinctBy { it.id }
+    if (kana.isEmpty()) return
+    val tagged = vm.progress.taggedKana
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Tap any kana you don't know to add it to My kana", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (k in kana.take(8)) {
+                val on = k.id in tagged
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (on) KanaColors.Indigo else MaterialTheme.colorScheme.surface)
+                        .border(2.dp, if (on) KanaColors.Indigo else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+                        .clickable { vm.toggleTag(k.id) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(k.japanese + if (on) " 📌" else "", fontSize = 22.sp, color = if (on) Color.White else MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -45,7 +45,12 @@ class QuizSession(
             questions++
             answers += question.item.id to correct
         }
-        if (correct) {
+        if (correct && mode == SessionMode.CHECK) {
+            // The check is a placement test, not a combo run: a flat bit of XP, no combo or combo badges.
+            gained = Gamify.CHECK_XP
+            xp += gained
+            firstTryCorrect++
+        } else if (correct) {
             combo++
             maxCombo = maxOf(maxCombo, combo)
             gained = Gamify.xpFor(combo)
@@ -53,7 +58,7 @@ class QuizSession(
             if (!question.isRetry) firstTryCorrect++
         } else {
             combo = 0
-            if (mode != SessionMode.LIGHTNING) queue.addLast(Step.Ask(retry(question.item).copy(isRetry = true)))
+            if (mode != SessionMode.LIGHTNING && mode != SessionMode.CHECK) queue.addLast(Step.Ask(retry(question.item).copy(isRetry = true)))
         }
         return Feedback(correct, choice, question.correctIndex, gained, combo)
     }

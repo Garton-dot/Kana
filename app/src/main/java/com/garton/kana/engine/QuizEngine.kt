@@ -7,7 +7,7 @@ import com.garton.kana.model.StudyItem
 import com.garton.kana.model.StudyUnit
 import kotlin.random.Random
 
-enum class SessionMode { LESSON, REVIEW, LIGHTNING }
+enum class SessionMode { LESSON, REVIEW, LIGHTNING, CHECK }
 
 enum class QuestionType { KANA_TO_ROMAJI, ROMAJI_TO_KANA, WORD_TO_MEANING, MEANING_TO_WORD, KANJI_TO_READING }
 
@@ -67,7 +67,10 @@ class QuizEngine(private val random: Random = Random.Default) {
             answerOf(other, type) != answer && promptOf(other, type) != prompt
         val sameUnitFirst = pool.filter(::valid).shuffled(random).sortedBy { if (it.unitId == item.unitId) 0 else 1 }
         val fallback = Course.items.filter(::valid).shuffled(random)
-        val distractors = (sameUnitFirst + fallback).map { answerOf(it, type) }.distinct().take(3)
+        val picked = (sameUnitFirst + fallback).map { answerOf(it, type) }.distinct()
+        // Reading questions get one lookalike trap (ぬる vs める), so a miss shows which kana got mixed up.
+        val trap = if (type == QuestionType.KANJI_TO_READING) KanaPool.lookalikeOf(answer, random)?.takeIf { it != answer } else null
+        val distractors = (listOfNotNull(trap) + picked.filter { it != trap }).take(3)
         val options = (distractors + answer).shuffled(random)
         val hint = if (type == QuestionType.WORD_TO_MEANING && item.kind == ItemKind.VOCAB) item.kanji else null
         return Question(item, type, prompt, hint, options, options.indexOf(answer))

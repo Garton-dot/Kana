@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.garton.kana.data.Course
 import com.garton.kana.engine.Gamify
+import com.garton.kana.engine.KanaPool
 import com.garton.kana.engine.Progression
 import com.garton.kana.model.StudyUnit
 import com.garton.kana.model.Track
@@ -85,6 +86,23 @@ fun HomeScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Unit) 
                     accent = KanaColors.Flame, enabled = true, badge = null,
                     modifier = Modifier.weight(1f),
                 ) { vm.startLightning() }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val pool = state.taggedKana.size
+                ModeCard(
+                    emoji = "📌", title = "My kana",
+                    subtitle = if (pool > 0) "$pool to drill" else "Tag kana while you read",
+                    accent = KanaColors.Indigo, enabled = pool > 0, badge = null,
+                    modifier = Modifier.weight(1f),
+                ) { vm.startPool() }
+                ModeCard(
+                    emoji = "📝", title = "Hiragana check",
+                    subtitle = if (state.lastCheckScore >= 0) "Last: ${state.lastCheckScore}/${KanaPool.CHECK_SIZE}" else "2 min · find your gaps",
+                    accent = KanaColors.Sakura, enabled = true, badge = null,
+                    modifier = Modifier.weight(1f),
+                ) { vm.startCheck() }
             }
         }
         item { TrackSelector(vm.track) { vm.track = it } }

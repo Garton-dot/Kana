@@ -68,4 +68,10 @@ data class ProgressState(
     val mnemonics: Map<String, String> = emptyMap(),
     /** One-time wipe of Anki-imported progress has run (learners asked to start the deck fresh). */
     val deckProgressReset: Boolean = false,
+    /** "My kana": ids of kana items the learner flagged or slipped on, studied as their own pool. */
+    val taggedKana: Set<String> = emptySet(),
+    /** Romaji under deck and vocab words; hidden by default so the kana get read. */
+    val showRomaji: Boolean = false,
+    /** Score out of 46 on the last hiragana check, -1 before the first. */
+    val lastCheckScore: Int = -1,
 )

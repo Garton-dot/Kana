@@ -66,6 +66,7 @@ fun ResultsScreen(vm: KanaViewModel, results: Screen.Results) {
             )
             Text(
                 when {
+                    summary.mode == SessionMode.CHECK -> if (summary.firstTryCorrect == summary.questions) "All 46. Nailed it!" else "Gaps found"
                     lightning && rewards.newLightningBest -> "New record!"
                     lightning -> "Time's up!"
                     rewards.stars == 3 -> "Perfect!"
@@ -107,6 +108,9 @@ fun ResultsScreen(vm: KanaViewModel, results: Screen.Results) {
                 if (rewards.earnedFreeze) RewardLine("❄️", "Streak freeze earned — protects one missed day", KanaColors.Ice)
                 if (lightning && rewards.newLightningBest) RewardLine("⚡", "New Lightning best: ${summary.firstTryCorrect}", KanaColors.Flame)
                 rewards.newAchievements.forEach { RewardLine(it.emoji, "Achievement: ${it.title}", KanaColors.Sakura) }
+                if (results.tagged.isNotEmpty()) {
+                    RewardLine("📌", "Added to My kana: ${results.tagged.joinToString(" ") { it.japanese }}", KanaColors.Indigo)
+                }
             }
             Spacer(Modifier.height(28.dp))
 
@@ -120,6 +124,11 @@ fun ResultsScreen(vm: KanaViewModel, results: Screen.Results) {
                     vm.closeResults()
                     vm.startLesson(results.unit)
                 }
+                vm.progress.taggedKana.isNotEmpty() && (summary.mode == SessionMode.CHECK || results.tagged.isNotEmpty()) ->
+                    BigButton("Drill My kana 📌", KanaColors.Indigo) {
+                        vm.closeResults()
+                        vm.startPool()
+                    }
                 lightning -> BigButton("Play again ⚡", KanaColors.Flame) {
                     vm.closeResults()
                     vm.startLightning()

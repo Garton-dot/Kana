@@ -120,6 +120,18 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Uni
                 Switch(checked = state.remindersOn, onCheckedChange = { vm.setReminders(it) })
             }
         }
+        item {
+            Row(
+                Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Show romaji under words", fontWeight = FontWeight.Bold)
+                    Text("Off makes you read the kana; you can still tap to reveal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = state.showRomaji, onCheckedChange = { vm.setShowRomaji(it) })
+            }
+        }
 
         item { Text("Anki deck", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp)) }
         item {

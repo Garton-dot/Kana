@@ -185,6 +185,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo
 .choice p { margin: 0; }
 .choice > div { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .choice .linkish { justify-self: start; }
+.tags { display: grid; gap: 6px; justify-items: center; }
+.tags small { color: var(--muted); font-size: 13px; }
+.tags > div { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.tag { min-width: 44px; min-height: 44px; padding: 4px 12px; border-radius: 12px; font-size: 22px; background: var(--surface); border: 2px solid var(--line); }
+.tag.on { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+.reveal { color: var(--accent); font-weight: 700; padding: 6px; cursor: pointer; }
+.sheet p.slip { color: var(--indigo); }
 .row-btns { display: grid; gap: 6px; justify-items: end; }
 .import { background: var(--surface); border-radius: 22px; padding: 20px; box-shadow: var(--shadow); display: grid; gap: 8px; }
 .import h3 { margin: 0; font-size: 20px; }
@@ -578,6 +585,8 @@ const freshState = () => ({
   totalXp: 0, items: {}, unitStars: {}, streak: 0, bestStreak: 0, lastPracticeDay: -1, todayXp: 0, todayDay: -1,
   dailyGoal: 100, goalClaimedDay: -1, bestCombo: 0, lightningBest: 0, achievements: [], sessions: 0, freezes: 0,
   sound: true, updatedAt: 0, mnemonics: {}, deckProgressReset: false,
+  // "My kana": kana ids flagged or slipped on while reading words; romaji under words; last hiragana check score.
+  taggedKana: [], showRomaji: false, lastCheckScore: -1,
 });
 
 const P = {
@@ -657,7 +666,10 @@ const Q = {
     const ok = o => o.kind === item.kind && o.id !== item.id && Q.answer(o, type) !== ans && Q.prompt(o, type) !== pr;
     const near = shuffle(pool.filter(ok)).sort((a, b) => (a.unitId === item.unitId ? 0 : 1) - (b.unitId === item.unitId ? 0 : 1));
     const far = shuffle(Course.items.filter(ok));
-    const distractors = [...new Set([...near, ...far].map(o => Q.answer(o, type)))].slice(0, 3);
+    const picked = [...new Set([...near, ...far].map(o => Q.answer(o, type)))];
+    // Reading questions get one lookalike trap (ぬる vs める), so a miss shows which kana got mixed up.
+    const trap = type === "k2read" ? Pool.lookalikeOf(ans) : null;
+    const distractors = [...(trap && trap !== ans ? [trap] : []), ...picked.filter(o => o !== trap)].slice(0, 3);
     const options = shuffle([...distractors, ans]);
     return { item, type, prompt: pr, hint: type === "w2m" && item.kind === "vocab" ? item.kanji : null, options, correct: options.indexOf(ans), retry: false };
   },
@@ -698,8 +710,10 @@ function Session(mode, unitId, steps, retry, refill) {
     const qq = S.current.ask, ok = choice === qq.correct;
     let gained = 0;
     if (!qq.retry) { S.questions++; S.answers.push([qq.item.id, ok]); }
-    if (ok) { S.combo++; S.maxCombo = Math.max(S.maxCombo, S.combo); gained = Gamify.xpFor(S.combo); S.xp += gained; if (!qq.retry) S.firstTry++; }
-    else { S.combo = 0; if (mode !== "lightning") q.push({ ask: { ...retry(qq.item), retry: true } }); }
+    // The check is a placement test, not a combo run: a flat bit of XP, no combo or combo badges.
+    if (ok && mode === "check") { gained = 2; S.xp += gained; S.firstTry++; }
+    else if (ok) { S.combo++; S.maxCombo = Math.max(S.maxCombo, S.combo); gained = Gamify.xpFor(S.combo); S.xp += gained; if (!qq.retry) S.firstTry++; }
+    else { S.combo = 0; if (mode !== "lightning" && mode !== "check") q.push({ ask: { ...retry(qq.item), retry: true } }); }
     return { ok, chosen: choice, correct: qq.correct, gained, combo: S.combo };
   };
   S.advance = () => { S.done++; if (!q.length && refill) q.push(...refill()); S.current = q.shift() || null; };
@@ -765,6 +779,68 @@ const Anki = {
     return [s, { words: ids.length, studied: best.size, mastered: [...best.values()].filter(p => p[0] >= Srs.MASTERED).length }];
   },
 };
+// "My kana": kana flagged (or slipped on) while reading words, studied as their own small pool.
+const Pool = {
+  CHECK_SIZE: 46,
+  LOOKALIKES: ["ぬめ", "わねれ", "はほけ", "るろ", "さちき", "いり", "こに", "あおめ", "うつら", "くへ", "しつ", "まも", "そろ", "たな",
+    "ばぱ", "びぴ", "ぶぷ", "べぺ", "ぼぽ", "シツ", "ソン", "クタケ", "ウワフ", "コユ", "チテ", "ノメ", "ヌス", "ラヲ", "マム", "セサ", "ルレ"],
+  confusable: null,
+  itemFor: k => Course.item("h:" + k) || Course.item("k:" + k),
+  // Kana text → course kana items (きゃ counts as one); っ, ー and the like are skipped.
+  itemsIn(text) {
+    const cs = [...(text || "")], out = [];
+    for (let i = 0; i < cs.length; i++) {
+      const two = cs[i + 1] ? Pool.itemFor(cs[i] + cs[i + 1]) : null;
+      if (two) { out.push(two); i++; } else { const one = Pool.itemFor(cs[i]); if (one) out.push(one); }
+    }
+    return out;
+  },
+  // After a missed reading, the kana behind the slip. Only near misses count (same length, 1–2 kana differ).
+  slips(correct, chosen) {
+    const a = Pool.itemsIn(correct).map(i => i.jp), b = Pool.itemsIn(chosen).map(i => i.jp);
+    if (!a.length || a.length !== b.length) return [];
+    const diff = a.map((_, i) => i).filter(i => a[i] !== b[i]);
+    // Only lookalike swaps count (ぬる read as める); picking a different word (いる for いう) isn't a kana slip.
+    Pool.lookalikeOf("");
+    const alike = (x, y) => x.length === y.length && x.slice(1) === y.slice(1) && (Pool.confusable[x[0]] || []).includes(y[0]);
+    if (!diff.length || diff.length > 2 || diff.some(i => !alike(a[i], b[i]))) return [];
+    return [...new Set(diff.flatMap(i => [Pool.itemFor(a[i]), Pool.itemFor(b[i])]).filter(Boolean))];
+  },
+  lookalikeOf(reading) {
+    if (!Pool.confusable) {
+      Pool.confusable = {};
+      for (const g of Pool.LOOKALIKES) for (const c of g) Pool.confusable[c] = [...new Set([...(Pool.confusable[c] || []), ...[...g].filter(x => x !== c)])];
+    }
+    const cs = [...reading], spots = cs.map((_, i) => i).filter(i => Pool.confusable[cs[i]]);
+    if (!spots.length) return null;
+    const i = pick(spots); cs[i] = pick(Pool.confusable[cs[i]]);
+    return cs.join("");
+  },
+  tag: (s, ids) => { s.taggedKana = [...new Set([...s.taggedKana, ...ids])]; },
+  // Kana you now know well leave the pool on their own.
+  graduate: s => { s.taggedKana = s.taggedKana.filter(id => box(s, id) < Srs.MASTERED); },
+  items: s => s.taggedKana.map(id => Course.item(id)).filter(Boolean),
+  basicHiragana: () => Course.unitsOf("hiragana").slice(0, 10).flatMap(u => u.items),
+  checkSteps() { const all = Pool.basicHiragana(); return shuffle(all).map(it => ({ ask: Q.question(it, all, "k2r") })); },
+  practiceSteps(s, asks = 12) {
+    const pool = Pool.items(s);
+    if (!pool.length) return [];
+    const order = shuffle(pool);
+    while (order.length < asks) order.push([...pool].sort((a, b) => box(s, a.id) + Math.random() * 3 - box(s, b.id) - Math.random() * 3)[0]);
+    return order.map(it => ({ ask: Q.question(it, Course.itemsOf(Course.unit(it.unitId).track)) }));
+  },
+  // A finished check: kana read correctly count as known (box 3, due in a few days); misses go into the pool.
+  applyCheck(prev, answers, now) {
+    const s = structuredClone(prev), missed = [];
+    for (const [id, ok] of answers) {
+      if (ok) { const p = Srs.onAnswer(s.items[id], true, now); s.items[id] = p[0] >= 3 ? p : [3, now + 3 * DAY, p[2], p[3]]; }
+      else { missed.push(id); s.items[id] = Srs.onAnswer(s.items[id], false, now); }
+    }
+    s.lastCheckScore = answers.filter(a => a[1]).length;
+    Pool.tag(s, missed);
+    return [s, missed];
+  },
+};
 // LOGIC END
 
 // ───────────── Reading .apkg files (libraries load only when someone imports) ─────────────
@@ -808,7 +884,7 @@ const LS_KEY = "kanarush.v1";
 const today = () => { const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset() * MIN) / DAY); };
 function normalize(x) {
   const s = { ...freshState(), ...(x || {}) };
-  s.items = s.items || {}; s.unitStars = s.unitStars || {}; s.achievements = s.achievements || []; s.mnemonics = s.mnemonics || {};
+  s.items = s.items || {}; s.unitStars = s.unitStars || {}; s.achievements = s.achievements || []; s.mnemonics = s.mnemonics || {}; s.taggedKana = s.taggedKana || [];
   // Learners chose to relearn their Anki deck from scratch: drop progress imported before that choice existed.
   if (!s.deckProgressReset) { Object.assign(s, clearDeckProgress(s)); s.deckProgressReset = true; }
   return s;
@@ -886,7 +962,7 @@ const app = document.getElementById("app");
 const poolFor = it => P.unlockedItems(state, Course.unit(it.unitId).track);
 
 function begin(session, title, endsAt = null) {
-  ui.session = session; ui.title = title; ui.fb = null; ui.endsAt = endsAt; ui.screen = "quiz";
+  ui.session = session; ui.title = title; ui.fb = null; ui.endsAt = endsAt; ui.screen = "quiz"; ui.slips = []; ui.taggedNow = [];
   window.scrollTo(0, 0);
   render(); onStep();
   if (endsAt) { clearInterval(timer); timer = setInterval(tick, 100); }
@@ -906,29 +982,47 @@ function startLightning() {
   const items = k.length >= 8 ? k : P.unlockedItems(state, "hiragana");
   begin(Session("lightning", null, Q.lightning(items, poolFor), it => Q.question(it, poolFor(it)), () => Q.lightning(items, poolFor)), "Lightning round", Date.now() + LIGHTNING_MS);
 }
+function startCheck() {
+  const all = Pool.basicHiragana();
+  begin(Session("check", null, Pool.checkSteps(), it => Q.question(it, all)), "Hiragana check");
+}
+function startPool() {
+  const steps = Pool.practiceSteps(state);
+  if (!steps.length) return;
+  begin(Session("review", null, steps, it => Q.question(it, Course.itemsOf(Course.unit(it.unitId).track))), "My kana");
+}
+function toggleTag(id) {
+  if (state.taggedKana.includes(id)) state.taggedKana = state.taggedKana.filter(x => x !== id); else Pool.tag(state, [id]);
+  save();
+}
+const isRapid = mode => mode === "lightning" || mode === "check"; // move on by themselves, no audio
 function onStep() {
   const st = ui.session?.current;
   if (!st) return;
   if (st.teach) speak(st.teach.jp);
-  else if (ui.session.mode !== "lightning" && (st.ask.type === "k2r" || st.ask.type === "w2m")) speak(st.ask.item.jp);
+  else if (!isRapid(ui.session.mode) && (st.ask.type === "k2r" || st.ask.type === "w2m")) speak(st.ask.item.jp);
 }
 function answer(i) {
   const s = ui.session;
   if (!s || ui.fb || !s.current?.ask) return;
+  const q = s.current.ask;
   ui.fb = s.answer(i);
-  const q = s.current.ask, light = s.mode === "lightning";
+  const rapid = isRapid(s.mode);
   chime(ui.fb.ok);
   if (!ui.fb.ok) { buzz(120); ui.shakeKey++; }
-  if (!light) speak(q.item.jp);
+  // A near miss on a reading points at the kana that got mixed up: put them in My kana.
+  ui.slips = !ui.fb.ok && q.type === "k2read" ? Pool.slips(q.options[q.correct], q.options[i]) : [];
+  if (ui.slips.length) { Pool.tag(state, ui.slips.map(x => x.id)); ui.taggedNow.push(...ui.slips.map(x => x.id)); save(); }
+  if (!rapid) speak(q.item.jp);
   render();
   clearTimeout(autoNext);
-  if (ui.fb.ok || light) autoNext = setTimeout(next, ui.fb.ok ? (light ? 250 : 800) : 700);
+  if (ui.fb.ok || rapid) autoNext = setTimeout(next, ui.fb.ok ? (rapid ? 250 : 800) : s.mode === "check" ? 1100 : 700);
 }
 function next() {
   const s = ui.session;
   if (!s || (s.current?.ask && !ui.fb)) return;
   clearTimeout(autoNext);
-  ui.fb = null; s.advance();
+  ui.fb = null; ui.slips = []; s.advance();
   if (!s.current) finish(); else { render(); onStep(); }
 }
 function tick() {
@@ -942,10 +1036,17 @@ function quit() { clearInterval(timer); clearTimeout(autoNext); ui.session = nul
 function finish() {
   clearInterval(timer); clearTimeout(autoNext);
   const s = ui.session; if (!s) return;
-  const sum = s.summary();
-  const [ns, rw] = P.complete(state, sum, Date.now(), today());
+  let sum = s.summary(), before = state;
+  if (s.mode === "check") {
+    const [checked, missed] = Pool.applyCheck(state, sum.answers, Date.now());
+    before = checked; ui.taggedNow.push(...missed);
+    sum = { ...sum, answers: [] }; // already scheduled by the check
+  }
+  const [ns, rw] = P.complete(before, sum, Date.now(), today());
+  Pool.graduate(ns);
   state = ns; save();
-  ui.results = { sum, rw, title: ui.title, unit: s.unitId ? Course.unit(s.unitId) : null };
+  const tagged = [...new Set(ui.taggedNow)].map(id => Course.item(id)).filter(Boolean);
+  ui.results = { sum, rw, title: ui.title, unit: s.unitId ? Course.unit(s.unitId) : null, tagged };
   ui.session = null; ui.fb = null; ui.screen = "results";
   window.scrollTo(0, 0);
   render();
@@ -953,9 +1054,9 @@ function finish() {
 
 // ───────────── Rendering ─────────────
 // "食べる (たべる) = taberu · to eat", leaving out whatever the item doesn't have.
-function describe(it) {
+function describe(it, showRomaji = state.showRomaji) {
   const head = it.kind === "word" ? written(it) + (it.kanji ? ` (${it.jp})` : "") : it.jp + (it.kanji ? ` (${it.kanji})` : "");
-  const tail = [it.romaji, it.meaning].filter(Boolean).join(" · ");
+  const tail = [it.kind === "kana" || showRomaji ? it.romaji : "", it.meaning].filter(Boolean).join(" · ");
   return tail ? `${head} = ${tail}` : head;
 }
 function importCard() {
@@ -968,6 +1069,15 @@ function importChoice() {
   return `<div class="choice"><p>Start every word fresh, or bring over your Anki review history so words you know keep their intervals?</p>
     <div><button class="cta" data-act="import-fresh">Start fresh</button><button class="ghost" data-act="import-keep">Keep history</button></div>
     <button class="linkish" data-act="import-cancel">Cancel</button></div>`;
+}
+// The word's kana as chips: tap one you can't read to add it to My kana (tap again to remove).
+function tagRowHtml(reading) {
+  const ks = [...new Map(Pool.itemsIn(reading).map(i => [i.id, i])).values()].slice(0, 8);
+  if (!ks.length) return "";
+  return `<div class="tags"><small>Tap any kana you don't know to add it to My kana</small><div>${ks.map(k => {
+    const on = state.taggedKana.includes(k.id);
+    return `<button class="tag kana ${on ? "on" : ""}" data-act="tag" data-v="${esc(k.id)}" aria-pressed="${on}">${esc(k.jp)}${on ? " 📌" : ""}</button>`;
+  }).join("")}</div></div>`;
 }
 // One line per kanji: keyword and story (the learner's own when written). Editable on teach cards.
 function mnemonicHtml(text, { editable = false, max = 4 } = {}) {
@@ -1041,6 +1151,10 @@ function homeHtml() {
       ${due ? `<span class="badge num">${due}</span>` : ""}<div class="ico">🔁</div><h3>Review</h3>
       <p>${due ? `${due} due now` : canReview ? "Drill your weak spots" : "Learn something first"}</p></button>
     <button class="mode" style="--c:var(--flame)" data-act="lightning"><div class="ico">⚡</div><h3>Lightning</h3><p class="num">60 seconds · best ${s.lightningBest}</p></button>
+    <button class="mode" style="--c:var(--indigo)" data-act="pool" ${s.taggedKana.length ? "" : "disabled"}><div class="ico">📌</div><h3>My kana</h3>
+      <p class="num">${s.taggedKana.length ? `${s.taggedKana.length} to drill` : "Tag kana while you read"}</p></button>
+    <button class="mode" style="--c:var(--accent)" data-act="check"><div class="ico">📝</div><h3>Hiragana check</h3>
+      <p class="num">${s.lastCheckScore >= 0 ? `Last: ${s.lastCheckScore}/${Pool.CHECK_SIZE}` : "2 min · find your gaps"}</p></button>
   </div>
   ${trackSeg()}
   ${ui.track === "deck" && !units.length ? importCard() : ""}
@@ -1058,6 +1172,8 @@ function homeHtml() {
 
 function renderQuiz() {
   const s = ui.session, st = s.current, fb = ui.fb, light = s.mode === "lightning";
+  // Slide in only when the step changes, not when tapping a tag chip re-renders it.
+  const freshStep = ui.animStep !== s.done; ui.animStep = s.done;
   let top;
   if (light) {
     const left = ui.endsAt - Date.now();
@@ -1075,10 +1191,12 @@ function renderQuiz() {
       <button class="card" data-act="speak" data-v="${esc(it.jp)}" aria-label="Hear ${esc(it.jp)}">
         <span class="kana ${it.kind === "kana" ? "big" : "word"}" style="--n:${[...written(it)].length}">${esc(written(it))}</span>
         ${(it.kind === "word" ? (it.kanji && it.jp) : it.kanji) ? `<span class="kanji kana">${esc(it.kind === "word" ? it.jp : it.kanji)}</span>` : ""}
-        ${it.romaji ? `<span class="ro">${esc(it.romaji)}</span>` : ""}${it.meaning ? `<span class="mean">${esc(it.meaning)}</span>` : ""}
+        ${!it.romaji ? "" : it.kind === "kana" || state.showRomaji || ui.revealRomaji === it.id ? `<span class="ro">${esc(it.romaji)}</span>`
+          : `<span class="reveal" role="button" tabindex="0" data-act="reveal" data-v="${esc(it.id)}">Show romaji</span>`}${it.meaning ? `<span class="mean">${esc(it.meaning)}</span>` : ""}
         ${it.sentence ? `<span class="ex kana">${esc(it.sentence)}</span>` : ""}${it.sentenceEn ? `<span class="ex-en">${esc(it.sentenceEn)}</span>` : ""}
       </button><span class="say" style="color:var(--muted)">🔊 Tap the card to hear it</span>
-      ${it.kanji ? mnemonicHtml(it.kanji, { editable: true }) : ""}</div>
+      ${it.kanji ? mnemonicHtml(it.kanji, { editable: true }) : ""}
+      ${it.kind !== "kana" ? tagRowHtml(it.jp) : ""}</div>
       <button class="cta" data-act="next">Got it!</button>`;
   } else if (st?.ask) {
     // Reading the word aloud is a hint, except when its reading is the question (k2read).
@@ -1096,16 +1214,17 @@ function renderQuiz() {
   }
   let sheet = "";
   if (fb && st?.ask) {
-    const it = st.ask.item, line = esc(describe(it));
+    const it = st.ask.item, line = esc(describe(it)), rapid = isRapid(s.mode);
+    const slipLine = ui.slips?.length ? `<p class="slip">📌 Added ${ui.slips.map(x => esc(x.jp)).join(" ")} to My kana</p>` : "";
     sheet = fb.ok
       ? `<div class="sheet" style="--c:var(--good)"><div class="sheet-in"><h3>${pick(Gamify.cheers)}<span class="num">+${fb.gained} XP</span></h3><p class="kana">${line}</p></div></div>`
-      : `<div class="sheet" style="--c:var(--bad)"><div class="sheet-in"><h3>Not quite</h3><p class="kana">${line}</p>
-         ${light ? "" : `${it.kanji ? mnemonicHtml(it.kanji, { max: 2 }) : ""}<p class="soft">It comes back at the end of this lesson.</p><button class="cta" style="--c:var(--bad)" data-act="next" id="cont">Continue</button>`}</div></div>`;
+      : `<div class="sheet" style="--c:var(--bad)"><div class="sheet-in"><h3>Not quite</h3><p class="kana">${line}</p>${slipLine}
+         ${rapid ? "" : `${it.kanji ? mnemonicHtml(it.kanji, { max: 2 }) : ""}<p class="soft">It comes back at the end of this lesson.</p><button class="cta" style="--c:var(--bad)" data-act="next" id="cont">Continue</button>`}</div></div>`;
   }
   app.innerHTML = `<section class="quiz" aria-label="${esc(ui.title)}">
     <div class="qtop"><button class="x" data-act="quit" aria-label="Quit session">✕</button>${top}</div>
     <div class="combo">${combo}</div>
-    <div class="stage" ${fb ? 'style="animation:none"' : ""}>${stage}</div>
+    <div class="stage" ${fb || !freshStep ? 'style="animation:none"' : ""}>${stage}</div>
   </section>${sheet}`;
   document.getElementById("cont")?.focus();
 }
@@ -1116,7 +1235,7 @@ function renderResults() {
   const acc = sum.questions ? Math.round(sum.firstTry * 100 / sum.questions) : 0;
   const celebrate = light || (rw.stars || 0) > 0 || acc >= 80;
   const hero = light ? "⚡" : rw.stars === 3 ? "🏆" : acc >= 80 ? "🎉" : "💪";
-  const head = light ? (rw.newBest ? "New record!" : "Time's up!") : rw.stars === 3 ? "Perfect!" : acc >= 80 ? "Great work!" : "Practice makes perfect";
+  const head = sum.mode === "check" ? (sum.firstTry === sum.questions ? "All 46. Nailed it!" : "Gaps found") : light ? (rw.newBest ? "New record!" : "Time's up!") : rw.stars === 3 ? "Perfect!" : acc >= 80 ? "Great work!" : "Practice makes perfect";
   const lines = [];
   if (rw.streakUp) lines.push(["🔥", `Streak extended to ${rw.streak} day${rw.streak === 1 ? "" : "s"}`, "var(--flame)"]);
   if (rw.goalBonus) lines.push(["🎁", `Daily goal reached. Chest: +${rw.goalBonus} XP`, "var(--gold)"]);
@@ -1125,9 +1244,11 @@ function renderResults() {
   if (rw.earnedFreeze) lines.push(["❄️", "Streak freeze earned. It covers one missed day", "var(--ice)"]);
   if (light && rw.newBest) lines.push(["⚡", `New Lightning best: ${sum.firstTry}`, "var(--flame)"]);
   rw.newAch.forEach(a => lines.push([a.emoji, `Achievement: ${a.title}`, "var(--accent)"]));
+  if (ui.results.tagged?.length) lines.push(["📌", `Added to My kana: ${ui.results.tagged.map(i => i.jp).join(" ")}`, "var(--indigo)"]);
   let primary;
   if (rw.unlocked) primary = `<button class="cta" data-act="lesson" data-v="${rw.unlocked.id}">Next: ${esc(rw.unlocked.title)} ▶</button>`;
   else if (unit) primary = `<button class="cta" data-act="lesson" data-v="${unit.id}">Keep going ▶</button>`;
+  else if (state.taggedKana.length && (sum.mode === "check" || ui.results.tagged?.length)) primary = `<button class="cta" style="--c:var(--indigo)" data-act="pool">Drill My kana 📌</button>`;
   else if (light) primary = `<button class="cta" style="--c:var(--flame)" data-act="lightning">Play again ⚡</button>`;
   else primary = `<button class="cta" data-act="home">Continue</button>`;
   app.innerHTML = `<main class="res">
@@ -1181,6 +1302,8 @@ function profileHtml() {
   <h3 class="sec">Daily goal</h3>
   <div class="goals" role="group" aria-label="Daily goal">${[[50, "Casual"], [100, "Regular"], [200, "Serious"], [300, "Insane"]].map(([x, n]) =>
     `<button data-act="goal" data-v="${x}" aria-pressed="${s.dailyGoal === x}"><b>${n}</b><small class="num">${x} XP</small></button>`).join("")}</div>
+  <div class="row"><div><b>Show romaji under words</b><small>Off makes you read the kana; you can still tap to reveal</small></div>
+    <button class="switch" role="switch" id="romaji" aria-label="Show romaji under words" aria-checked="${s.showRomaji}" data-act="romaji"></button></div>
   <div class="row"><div><b>Sound</b><small>Japanese voice and answer chimes</small></div>
     <button class="switch" role="switch" id="sound" aria-label="Sound" aria-checked="${s.sound}" data-act="sound"></button></div>
   <h3 class="sec">Anki deck</h3>
@@ -1245,6 +1368,11 @@ app.addEventListener("click", e => {
     case "speak": speak(v); break;
     case "home": ui.screen = "home"; render(); window.scrollTo(0, 0); break;
     case "goal": state.dailyGoal = +v; save(); render(); break;
+    case "pool": ui.screen = "home"; startPool(); break;
+    case "check": startCheck(); break;
+    case "tag": toggleTag(v); render(); break;
+    case "reveal": ui.revealRomaji = v; render(); break;
+    case "romaji": state.showRomaji = !state.showRomaji; save(); render(); document.getElementById("romaji")?.focus(); break;
     case "sound": state.sound = !state.sound; save(); render(); document.getElementById("sound")?.focus(); break;
     case "reset": ui.confirmReset = true; render(); break;
     case "reset-no": ui.confirmReset = false; render(); break;

@@ -6,6 +6,7 @@ object Gamify {
     const val BASE_XP = 10
     const val GOAL_BONUS_XP = 20
     const val MAX_FREEZES = 2
+    const val CHECK_XP = 2
 
     fun multiplier(combo: Int): Float = when {
         combo >= 20 -> 3f

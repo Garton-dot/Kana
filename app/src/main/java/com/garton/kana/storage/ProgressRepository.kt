@@ -44,6 +44,9 @@ class ProgressRepository(context: Context) {
         put("remindersOn", s.remindersOn)
         put("mnemonics", JSONObject().apply { s.mnemonics.forEach { (k, v) -> put(k, v) } })
         put("deckProgressReset", s.deckProgressReset)
+        put("taggedKana", JSONArray(s.taggedKana.toList()))
+        put("showRomaji", s.showRomaji)
+        put("lastCheckScore", s.lastCheckScore)
     }
 
     private fun decode(o: JSONObject): ProgressState {
@@ -80,6 +83,9 @@ class ProgressRepository(context: Context) {
             remindersOn = o.optBoolean("remindersOn", d.remindersOn),
             mnemonics = mnemonics,
             deckProgressReset = o.optBoolean("deckProgressReset", d.deckProgressReset),
+            taggedKana = o.optJSONArray("taggedKana")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: d.taggedKana,
+            showRomaji = o.optBoolean("showRomaji", d.showRomaji),
+            lastCheckScore = o.optInt("lastCheckScore", d.lastCheckScore),
         )
     }
 

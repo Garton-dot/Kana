@@ -13,6 +13,8 @@ import com.garton.kana.data.Course
 import com.garton.kana.engine.AnkiFormatException
 import com.garton.kana.engine.AnkiImport
 import com.garton.kana.engine.Feedback
+import com.garton.kana.engine.KanaPool
+import com.garton.kana.engine.QuestionType
 import com.garton.kana.engine.Progression
 import com.garton.kana.engine.QuizEngine
 import com.garton.kana.engine.QuizSession
@@ -33,13 +35,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import kotlin.random.Random
 
 enum class Tab { LEARN, CHART, PROFILE }
 
 sealed interface Screen {
     data object Home : Screen
     data object Quiz : Screen
-    data class Results(val title: String, val summary: SessionSummary, val rewards: Rewards, val unit: StudyUnit?) : Screen
+    data class Results(
+        val title: String,
+        val summary: SessionSummary,
+        val rewards: Rewards,
+        val unit: StudyUnit?,
+        /** Kana this session put into My kana (check misses, reading slips). */
+        val tagged: List<StudyItem> = emptyList(),
+    ) : Screen
 }
 
 /** An immutable snapshot of the running quiz for the UI. */
@@ -54,6 +64,8 @@ data class QuizUi(
     val feedback: Feedback?,
     val endsAt: Long?,
     val stepNumber: Int,
+    /** Kana just added to My kana because of the last answer. */
+    val slips: List<StudyItem> = emptyList(),
 )
 
 class KanaViewModel(app: Application) : AndroidViewModel(app) {
@@ -84,6 +96,8 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
     private var feedback: Feedback? = null
     private var endsAt: Long? = null
     private var stepNumber = 0
+    private var slips: List<StudyItem> = emptyList()
+    private val taggedThisSession = mutableListOf<String>()
 
     init {
         Reminders.schedule(app, progress.remindersOn)
@@ -133,10 +147,31 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
         begin(session, "Lightning round", keepDeadline = true)
     }
 
+    /** Every basic hiragana once; whatever you miss lands in My kana. */
+    fun startCheck() {
+        val steps = KanaPool.checkSteps(engine, Random.Default)
+        val all = KanaPool.basicHiragana()
+        begin(QuizSession(SessionMode.CHECK, null, steps, retry = { engine.question(it, all) }), "Hiragana check")
+    }
+
+    fun startPool() {
+        val steps = KanaPool.practiceSteps(engine, progress, Random.Default)
+        if (steps.isEmpty()) return
+        begin(QuizSession(SessionMode.REVIEW, null, steps, retry = { engine.question(it, Course.items(Course.unit(it.unitId)!!.track)) }), "My kana")
+    }
+
+    fun toggleTag(id: String) {
+        updateProgress(if (id in progress.taggedKana) KanaPool.untag(progress, id) else KanaPool.tag(progress, listOf(id)))
+    }
+
+    fun setShowRomaji(on: Boolean) = updateProgress(progress.copy(showRomaji = on))
+
     private fun begin(s: QuizSession, title: String, keepDeadline: Boolean = false) {
         session = s
         this.title = title
         feedback = null
+        slips = emptyList()
+        taggedThisSession.clear()
         stepNumber = 0
         if (!keepDeadline) endsAt = null
         screen = Screen.Quiz
@@ -145,15 +180,27 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun publish() {
         val s = session ?: return
-        quiz = QuizUi(s.mode, title, s.current, s.progress, s.combo, s.xp, s.firstTryCorrect, feedback, endsAt, stepNumber)
+        quiz = QuizUi(s.mode, title, s.current, s.progress, s.combo, s.xp, s.firstTryCorrect, feedback, endsAt, stepNumber, slips)
     }
 
     // ---- In-quiz actions ----
 
     fun answer(choice: Int) {
         val s = session ?: return
-        if (feedback != null || s.current !is Step.Ask) return
-        feedback = s.answer(choice)
+        val question = (s.current as? Step.Ask)?.question ?: return
+        if (feedback != null) return
+        val fb = s.answer(choice)
+        feedback = fb
+        // A near miss on a reading points at the kana that got mixed up: put them in My kana.
+        slips = if (!fb.correct && question.type == QuestionType.KANJI_TO_READING) {
+            KanaPool.slips(question.options[question.correctIndex], question.options[choice])
+        } else {
+            emptyList()
+        }
+        if (slips.isNotEmpty()) {
+            updateProgress(KanaPool.tag(progress, slips.map { it.id }))
+            taggedThisSession += slips.map { it.id }
+        }
         publish()
     }
 
@@ -161,6 +208,7 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
         val s = session ?: return
         if (s.current is Step.Ask && feedback == null) return
         feedback = null
+        slips = emptyList()
         s.advance()
         stepNumber++
         if (s.isFinished) finish() else publish()
@@ -181,12 +229,20 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun finish() {
         val s = session ?: return
-        val summary = s.summary()
-        val (state, rewards) = Progression.completeSession(progress, summary, now(), today())
-        updateProgress(state)
+        var summary = s.summary()
+        var before = progress
+        if (s.mode == SessionMode.CHECK) {
+            val (checked, missed) = KanaPool.applyCheck(progress, summary.answers, now())
+            before = checked
+            taggedThisSession += missed
+            summary = summary.copy(answers = emptyList()) // already scheduled by the check
+        }
+        val (state, rewards) = Progression.completeSession(before, summary, now(), today())
+        updateProgress(KanaPool.graduate(state))
         session = null
         quiz = null
-        screen = Screen.Results(title, summary, rewards, s.unitId?.let { Course.unit(it) })
+        val tagged = taggedThisSession.distinct().mapNotNull { Course.item(it) }
+        screen = Screen.Results(title, summary, rewards, s.unitId?.let { Course.unit(it) }, tagged)
     }
 
     fun closeResults() {
@@ -256,7 +312,7 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetProgress() = updateProgress(
-        ProgressState(dailyGoal = progress.dailyGoal, remindersOn = progress.remindersOn, mnemonics = progress.mnemonics, deckProgressReset = true),
+        ProgressState(dailyGoal = progress.dailyGoal, remindersOn = progress.remindersOn, mnemonics = progress.mnemonics, deckProgressReset = true, showRomaji = progress.showRomaji),
     )
 
     private fun updateProgress(state: ProgressState) {
