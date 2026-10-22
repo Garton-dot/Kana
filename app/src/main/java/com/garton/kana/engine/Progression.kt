@@ -80,7 +80,7 @@ object Progression {
     }
 
     fun completeSession(state: ProgressState, summary: SessionSummary, now: Long, today: Long): Pair<ProgressState, Rewards> {
-        var s = applyAnswers(state, summary.answers, now)
+        var s = Pace.record(state, summary.answers, today, applyAnswers(state, summary.answers, now))
 
         // Streak, bridging a single missed day with a freeze.
         val last = s.lastPracticeDay

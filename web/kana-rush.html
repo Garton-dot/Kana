@@ -192,6 +192,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--indigo
 .tag.on { background: var(--indigo); border-color: var(--indigo); color: #fff; }
 .reveal { color: var(--accent); font-weight: 700; padding: 6px; cursor: pointer; }
 .sheet p.slip { color: var(--indigo); }
+.pace > div { display: grid; gap: 4px; }
+.pace .finish { color: var(--indigo); }
 .row-btns { display: grid; gap: 6px; justify-items: end; }
 .import { background: var(--surface); border-radius: 22px; padding: 20px; box-shadow: var(--shadow); display: grid; gap: 8px; }
 .import h3 { margin: 0; font-size: 20px; }
@@ -587,6 +589,7 @@ const freshState = () => ({
   sound: true, updatedAt: 0, mnemonics: {}, deckProgressReset: false,
   // "My kana": kana ids flagged or slipped on while reading words; romaji under words; last hiragana check score.
   taggedKana: [], showRomaji: false, lastCheckScore: -1,
+  newWordsByDay: {}, // new deck words learned per epoch day, for the pace readout (kept ~60 days)
 });
 
 const P = {
@@ -614,6 +617,12 @@ const P = {
   complete(prev, sum, now, today) {
     const s = structuredClone(prev);
     for (const [id, ok] of sum.answers) s.items[id] = Srs.onAnswer(s.items[id], ok, now);
+    // Pace log: deck words met for the first time this session.
+    const fresh = new Set(sum.answers.map(a => a[0]).filter(id => id.startsWith("d:") && !seen(prev, id))).size;
+    if (fresh) {
+      s.newWordsByDay = Object.fromEntries(Object.entries(s.newWordsByDay || {}).filter(([d]) => +d > today - 60));
+      s.newWordsByDay[today] = (s.newWordsByDay[today] || 0) + fresh;
+    }
     const last = s.lastPracticeDay;
     let freezes = s.freezes, streak;
     if (last === today) streak = s.streak;
@@ -841,6 +850,22 @@ const Pool = {
     return [s, missed];
   },
 };
+// How fast new deck words are being learned, and where that pace lands you. Null until 3 days of history.
+const Pace = {
+  WINDOW: 14, MIN_DAYS: 3, MILESTONE: 800,
+  of(s, today) {
+    const deck = Course.itemsOf("deck"), total = deck.length;
+    const days0 = Object.keys(s.newWordsByDay || {}).map(Number);
+    if (!total || !days0.length) return null;
+    const days = Math.min(Pace.WINDOW, today - Math.min(...days0) + 1);
+    if (days < Pace.MIN_DAYS) return null;
+    const recent = Object.entries(s.newWordsByDay).filter(([d]) => +d > today - days).reduce((n, [, v]) => n + v, 0);
+    const perDay = recent / days, learned = deck.filter(i => seen(s, i.id)).length;
+    const daysFor = n => perDay <= 0 || n <= 0 ? null : Math.ceil(n / perDay);
+    return { perDay, days, learned, total, daysToFinish: daysFor(total - learned),
+      daysToMilestone: learned >= Pace.MILESTONE || total < Pace.MILESTONE ? null : daysFor(Pace.MILESTONE - learned) };
+  },
+};
 // LOGIC END
 
 // ───────────── Reading .apkg files (libraries load only when someone imports) ─────────────
@@ -884,7 +909,7 @@ const LS_KEY = "kanarush.v1";
 const today = () => { const d = new Date(); return Math.floor((d.getTime() - d.getTimezoneOffset() * MIN) / DAY); };
 function normalize(x) {
   const s = { ...freshState(), ...(x || {}) };
-  s.items = s.items || {}; s.unitStars = s.unitStars || {}; s.achievements = s.achievements || []; s.mnemonics = s.mnemonics || {}; s.taggedKana = s.taggedKana || [];
+  s.items = s.items || {}; s.unitStars = s.unitStars || {}; s.achievements = s.achievements || []; s.mnemonics = s.mnemonics || {}; s.taggedKana = s.taggedKana || []; s.newWordsByDay = s.newWordsByDay || {};
   // Learners chose to relearn their Anki deck from scratch: drop progress imported before that choice existed.
   if (!s.deckProgressReset) { Object.assign(s, clearDeckProgress(s)); s.deckProgressReset = true; }
   return s;
@@ -1064,6 +1089,17 @@ function importCard() {
     <p>Import a Japanese vocabulary deck (.apkg) and its words become a track here, with a mnemonic for every kanji. Start fresh, or keep your Anki review history.</p>
     <p class="how">In Anki: File → Export → Anki Deck Package. Tick “Include scheduling information” and “Support older Anki versions”, untick media.</p>
     ${ui.importChoice ? importChoice() : `<button class="cta" style="--c:var(--indigo)" data-act="import" ${ui.importing ? "disabled" : ""}>${ui.importing ? "Importing…" : "Import Anki deck"}</button>`}</section>`;
+}
+// "At your pace": new Anki words a day, and when the 800-word mark and the whole deck come into reach.
+function paceHtml(p) {
+  const inTime = d => d <= 13 ? `${d} day${d === 1 ? "" : "s"}` : d <= 120 ? `${Math.ceil(d / 7)} weeks` : `${Math.round(d / 30)} months`;
+  const around = d => new Date(Date.now() + d * DAY).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  if (!p) return `<div class="row pace"><div><b>📈 Your pace</b><small>Learn new Anki words on a few days and your pace and finish date show up here.</small></div></div>`;
+  return `<div class="row pace"><div><b>📈 Your pace</b>
+    <span class="num">${p.perDay.toFixed(1)} new words a day over the last ${p.days} days · ${p.learned} of ${p.total} learned</span>
+    ${p.daysToFinish == null ? `<small>No new words lately. One lesson a day gets the clock moving again.</small>` : `
+      ${p.daysToMilestone != null ? `<span class="num">${Pace.MILESTONE} words (about JLPT N5): ${inTime(p.daysToMilestone)}, around ${around(p.daysToMilestone)}</span>` : ""}
+      <strong class="num finish">Whole deck: ${inTime(p.daysToFinish)}, around ${around(p.daysToFinish)}</strong>`}</div></div>`;
 }
 function importChoice() {
   return `<div class="choice"><p>Start every word fresh, or bring over your Anki review history so words you know keep their intervals?</p>
@@ -1299,6 +1335,7 @@ function profileHtml() {
   if (Course.deckName) stats.push(["🀄", `${P.mastered(s, deckItems)}/${deckItems.length}`, "Anki words mastered"], ["🃏", deckItems.filter(i => seen(s, i.id)).length, "Anki words studied"]);
   return `<h2 class="title">Profile</h2>
   <div class="stats">${stats.map(([e, v, l]) => `<div class="stat"><b class="num">${e} ${v}</b><small>${l}</small></div>`).join("")}</div>
+  ${Course.deckName ? paceHtml(Pace.of(s, today())) : ""}
   <h3 class="sec">Daily goal</h3>
   <div class="goals" role="group" aria-label="Daily goal">${[[50, "Casual"], [100, "Regular"], [200, "Serious"], [300, "Insane"]].map(([x, n]) =>
     `<button data-act="goal" data-v="${x}" aria-pressed="${s.dailyGoal === x}"><b>${n}</b><small class="num">${x} XP</small></button>`).join("")}</div>

@@ -47,6 +47,7 @@ class ProgressRepository(context: Context) {
         put("taggedKana", JSONArray(s.taggedKana.toList()))
         put("showRomaji", s.showRomaji)
         put("lastCheckScore", s.lastCheckScore)
+        put("newWordsByDay", JSONObject().apply { s.newWordsByDay.forEach { (day, n) -> put(day.toString(), n) } })
     }
 
     private fun decode(o: JSONObject): ProgressState {
@@ -86,6 +87,7 @@ class ProgressRepository(context: Context) {
             taggedKana = o.optJSONArray("taggedKana")?.let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } ?: d.taggedKana,
             showRomaji = o.optBoolean("showRomaji", d.showRomaji),
             lastCheckScore = o.optInt("lastCheckScore", d.lastCheckScore),
+            newWordsByDay = o.optJSONObject("newWordsByDay")?.let { obj -> obj.keys().asSequence().associate { it.toLong() to obj.getInt(it) } } ?: d.newWordsByDay,
         )
     }
 

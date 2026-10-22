@@ -74,4 +74,6 @@ data class ProgressState(
     val showRomaji: Boolean = false,
     /** Score out of 46 on the last hiragana check, -1 before the first. */
     val lastCheckScore: Int = -1,
+    /** New deck words learned per epoch day, for the pace readout (kept ~60 days). */
+    val newWordsByDay: Map<Long, Int> = emptyMap(),
 )

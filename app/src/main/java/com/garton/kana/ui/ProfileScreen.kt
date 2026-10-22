@@ -33,9 +33,48 @@ import androidx.compose.ui.unit.sp
 import com.garton.kana.data.Course
 import com.garton.kana.engine.Achievement
 import com.garton.kana.engine.Gamify
+import com.garton.kana.engine.Pace
 import com.garton.kana.engine.Progression
 import com.garton.kana.model.ItemKind
 import com.garton.kana.model.Track
+
+/** "At your pace": new Anki words a day, and when the 800-word mark and the whole deck come into reach. */
+@Composable
+private fun PaceCard(pace: Pace?, today: Long) {
+    Column(
+        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp)).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text("📈 Your pace", fontWeight = FontWeight.Bold)
+        if (pace == null) {
+            Text(
+                "Learn new Anki words on a few days and your pace and finish date show up here.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+        Text(
+            "%.1f new words a day over the last %d days · %d of %d learned".format(pace.perDay, pace.days, pace.learned, pace.total),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        val finish = pace.daysToFinish
+        if (finish == null) {
+            Text("No new words lately. One lesson a day gets the clock moving again.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            pace.daysToMilestone?.let { Text("${Pace.MILESTONE} words (about JLPT N5): ${inTime(it)}, around ${dateIn(today, it)}") }
+            Text("Whole deck: ${inTime(finish)}, around ${dateIn(today, finish)}", fontWeight = FontWeight.Bold, color = KanaColors.Indigo)
+        }
+    }
+}
+
+private fun inTime(days: Int) = when {
+    days <= 13 -> "$days day${if (days == 1) "" else "s"}"
+    days <= 120 -> "${(days + 6) / 7} weeks"
+    else -> "${(days + 15) / 30} months"
+}
+
+private fun dateIn(today: Long, days: Int): String =
+    java.time.LocalDate.ofEpochDay(today + days).format(java.time.format.DateTimeFormatter.ofPattern("MMM yyyy"))
 
 private val GOALS = listOf(50 to "Casual", 100 to "Regular", 200 to "Serious", 300 to "Insane")
 
@@ -88,6 +127,8 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Uni
                 }
             }
         }
+
+        if (Course.deckName != null) item { PaceCard(Pace.of(state, vm.today()), vm.today()) }
 
         item { Text("Daily goal", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp)) }
         item {
