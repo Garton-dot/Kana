@@ -92,6 +92,12 @@ object AnkiImport {
         return ItemProgress(box = box, due = dueSec * 1000, seen = card.reps, correct = maxOf(0, card.reps - card.lapses))
     }
 
+    /** Forgets all progress on deck words, so the Anki track starts over from Set 1. */
+    fun clearDeckProgress(state: ProgressState): ProgressState = state.copy(
+        items = state.items.filterKeys { !it.startsWith("d:") },
+        unitStars = state.unitStars.filterKeys { !it.startsWith("d-") },
+    )
+
     /** Adds the deck's review history to [state]; existing progress wins when it is further along. */
     fun merge(state: ProgressState, c: AnkiCollection): Pair<ProgressState, ImportReport> {
         val noteIds = notesInOrder(c).filter { wordOf(it) != null }.map { it.id }

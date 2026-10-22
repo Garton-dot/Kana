@@ -44,6 +44,7 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Uni
     val state = vm.progress
     vm.deckVersion // re-read Course when a deck is imported
     var confirmRemove by remember { mutableStateOf(false) }
+    var confirmDeckReset by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -133,12 +134,15 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Uni
                     Column(Modifier.weight(1f)) {
                         Text("🀄 $name", fontWeight = FontWeight.Bold)
                         Text(
-                            "${Course.items(Track.DECK).size} words · import again to refresh your Anki history",
+                            "${Course.items(Track.DECK).size} words",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    TextButton(onClick = onImport, enabled = !vm.importing) { Text(if (vm.importing) "Importing…" else "Re-import") }
-                    TextButton(onClick = { confirmRemove = true }) { Text("Remove", color = KanaColors.Wrong) }
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(onClick = onImport, enabled = !vm.importing) { Text(if (vm.importing) "Importing…" else "Re-import") }
+                        TextButton(onClick = { confirmDeckReset = true }) { Text("Reset progress") }
+                        TextButton(onClick = { confirmRemove = true }) { Text("Remove", color = KanaColors.Wrong) }
+                    }
                 }
             }
         }
@@ -186,6 +190,18 @@ fun ProfileScreen(vm: KanaViewModel, padding: PaddingValues, onImport: () -> Uni
                 TextButton(onClick = { vm.removeDeck(); confirmRemove = false }) { Text("Remove", color = KanaColors.Wrong) }
             },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (confirmDeckReset) {
+        AlertDialog(
+            onDismissRequest = { confirmDeckReset = false },
+            title = { Text("Start the Anki deck over?") },
+            text = { Text("Every word in the deck goes back to new, and sets lock again from Set 1. Kana, vocabulary, XP and your own mnemonics stay.") },
+            confirmButton = {
+                TextButton(onClick = { vm.resetDeckProgress(); confirmDeckReset = false }) { Text("Start over", color = KanaColors.Wrong) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeckReset = false }) { Text("Cancel") } },
         )
     }
 

@@ -64,4 +64,8 @@ data class ProgressState(
     val sessions: Int = 0,
     val freezes: Int = 0,
     val remindersOn: Boolean = true,
+    /** The learner's own mnemonic per kanji; replaces the built-in story when present. */
+    val mnemonics: Map<String, String> = emptyMap(),
+    /** One-time wipe of Anki-imported progress has run (learners asked to start the deck fresh). */
+    val deckProgressReset: Boolean = false,
 )

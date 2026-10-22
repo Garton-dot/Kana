@@ -42,6 +42,8 @@ class ProgressRepository(context: Context) {
         put("sessions", s.sessions)
         put("freezes", s.freezes)
         put("remindersOn", s.remindersOn)
+        put("mnemonics", JSONObject().apply { s.mnemonics.forEach { (k, v) -> put(k, v) } })
+        put("deckProgressReset", s.deckProgressReset)
     }
 
     private fun decode(o: JSONObject): ProgressState {
@@ -56,6 +58,8 @@ class ProgressRepository(context: Context) {
         o.optJSONObject("unitStars")?.let { obj -> obj.keys().forEach { stars[it] = obj.getInt(it) } }
         val achievements = mutableSetOf<String>()
         o.optJSONArray("achievements")?.let { a -> for (i in 0 until a.length()) achievements += a.getString(i) }
+        val mnemonics = mutableMapOf<String, String>()
+        o.optJSONObject("mnemonics")?.let { obj -> obj.keys().forEach { mnemonics[it] = obj.getString(it) } }
         val d = ProgressState()
         return ProgressState(
             totalXp = o.optInt("totalXp", d.totalXp),
@@ -74,6 +78,8 @@ class ProgressRepository(context: Context) {
             sessions = o.optInt("sessions", d.sessions),
             freezes = o.optInt("freezes", d.freezes),
             remindersOn = o.optBoolean("remindersOn", d.remindersOn),
+            mnemonics = mnemonics,
+            deckProgressReset = o.optBoolean("deckProgressReset", d.deckProgressReset),
         )
     }
 

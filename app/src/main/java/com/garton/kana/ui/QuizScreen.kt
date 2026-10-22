@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -116,7 +118,7 @@ fun QuizScreen(vm: KanaViewModel, quiz: QuizUi) {
                 label = "step",
             ) { (_, shown) ->
                 when (shown) {
-                    is Step.Teach -> TeachCard(shown.item, onSpeak = { vm.speak(shown.item.japanese) })
+                    is Step.Teach -> TeachCard(vm, shown.item, onSpeak = { vm.speak(shown.item.japanese) })
                     is Step.Ask -> AskCard(shown.question, if (shown == step) feedback else null, onSpeak = { vm.speak(shown.question.item.japanese) }) { vm.answer(it) }
                     null -> Box(Modifier.fillMaxSize())
                 }
@@ -132,7 +134,7 @@ fun QuizScreen(vm: KanaViewModel, quiz: QuizUi) {
             exit = slideOutVertically { it } + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter),
         ) {
-            if (feedback != null && step is Step.Ask) FeedbackBanner(feedback, step.question, quiz.mode) { vm.next() }
+            if (feedback != null && step is Step.Ask) FeedbackBanner(vm, feedback, step.question, quiz.mode) { vm.next() }
         }
     }
 }
@@ -201,44 +203,56 @@ private fun ComboBadge(combo: Int) {
 private fun formatMult(m: Float) = if (m % 1f == 0f) "${m.toInt()}×" else "$m×"
 
 @Composable
-private fun TeachCard(item: StudyItem, onSpeak: () -> Unit) {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Pill("✨ NEW", KanaColors.Sakura)
-        Spacer(Modifier.height(20.dp))
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .border(2.dp, KanaColors.Sakura.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
-                .clickable(onClick = onSpeak)
-                .padding(horizontal = 20.dp, vertical = 28.dp),
-            contentAlignment = Alignment.Center,
+private fun TeachCard(vm: KanaViewModel, item: StudyItem, onSpeak: () -> Unit) {
+    // Centered when it fits; scrolls when a long word, its sentence and its kanji stories don't.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val viewport = maxHeight
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = viewport).padding(vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                val word = item.kind == ItemKind.WORD
-                FittedText(if (word) item.written else item.japanese, if (item.kind == ItemKind.KANA) 120.sp else 72.sp)
-                // Vocab shows its kanji under the kana; deck words show their reading under the kanji.
-                (if (word) item.kanji?.let { item.japanese } else item.kanji)?.let {
-                    Text(it, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (item.romaji.isNotEmpty()) {
-                    Text(item.romaji, fontSize = 30.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura, textAlign = TextAlign.Center)
-                }
-                if (item.meaning.isNotEmpty()) {
-                    Text(item.meaning, fontSize = 22.sp, textAlign = TextAlign.Center)
-                }
-                item.sentence?.let {
-                    Spacer(Modifier.height(14.dp))
-                    Text(it, fontSize = 19.sp, textAlign = TextAlign.Center)
-                }
-                item.sentenceMeaning?.let {
-                    Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Pill("✨ NEW", KanaColors.Sakura)
+            Spacer(Modifier.height(20.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(2.dp, KanaColors.Sakura.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
+                    .clickable(onClick = onSpeak)
+                    .padding(horizontal = 20.dp, vertical = 28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val word = item.kind == ItemKind.WORD
+                    FittedText(if (word) item.written else item.japanese, if (item.kind == ItemKind.KANA) 120.sp else 72.sp)
+                    // Vocab shows its kanji under the kana; deck words show their reading under the kanji.
+                    (if (word) item.kanji?.let { item.japanese } else item.kanji)?.let {
+                        Text(it, fontSize = 26.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (item.romaji.isNotEmpty()) {
+                        Text(item.romaji, fontSize = 30.sp, fontWeight = FontWeight.Black, color = KanaColors.Sakura, textAlign = TextAlign.Center)
+                    }
+                    if (item.meaning.isNotEmpty()) {
+                        Text(item.meaning, fontSize = 22.sp, textAlign = TextAlign.Center)
+                    }
+                    item.sentence?.let {
+                        Spacer(Modifier.height(14.dp))
+                        Text(it, fontSize = 19.sp, textAlign = TextAlign.Center)
+                    }
+                    item.sentenceMeaning?.let {
+                        Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    }
                 }
             }
+            Spacer(Modifier.height(16.dp))
+            Text("🔊 Tap the card to hear it", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item.kanji?.let {
+                Spacer(Modifier.height(14.dp))
+                MnemonicPanel(vm, it, editable = true)
+            }
         }
-        Spacer(Modifier.height(16.dp))
-        Text("🔊 Tap the card to hear it", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -363,7 +377,7 @@ private fun OptionButton(
 }
 
 @Composable
-private fun FeedbackBanner(feedback: Feedback, question: Question, mode: SessionMode, onContinue: () -> Unit) {
+private fun FeedbackBanner(vm: KanaViewModel, feedback: Feedback, question: Question, mode: SessionMode, onContinue: () -> Unit) {
     val color = if (feedback.correct) KanaColors.Correct else KanaColors.Wrong
     val item = question.item
     Column(
@@ -388,6 +402,10 @@ private fun FeedbackBanner(feedback: Feedback, question: Question, mode: Session
                 color = color, fontSize = 18.sp, fontWeight = FontWeight.Bold,
             )
             if (mode != SessionMode.LIGHTNING) {
+                item.kanji?.let {
+                    Spacer(Modifier.height(8.dp))
+                    MnemonicPanel(vm, it, editable = false, compact = true, maxKanji = 2)
+                }
                 Text("It'll come back at the end — you've got this.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 Spacer(Modifier.height(12.dp))
                 BigButton("Continue", color, onClick = onContinue)

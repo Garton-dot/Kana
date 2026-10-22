@@ -110,7 +110,7 @@ fun ImportCard(importing: Boolean, onImport: () -> Unit) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("🀄 Bring your Anki deck", style = MaterialTheme.typography.titleLarge)
             Text(
-                "Import a Japanese vocabulary deck (.apkg) and its words become a track here, with your Anki review history carried over.",
+                "Import a Japanese vocabulary deck (.apkg) and its words become a track here, with a mnemonic for every kanji. Start fresh, or keep your Anki review history.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(

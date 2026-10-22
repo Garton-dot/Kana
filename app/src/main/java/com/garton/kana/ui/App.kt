@@ -13,13 +13,34 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.sp
 
 @Composable
 fun App(vm: KanaViewModel) {
     val pickDeck = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::importAnki) }
-    val onImport = { pickDeck.launch(arrayOf("*/*")) }
+    var choosingImport by remember { mutableStateOf(false) }
+    val onImport = { choosingImport = true }
+
+    if (choosingImport) {
+        AlertDialog(
+            onDismissRequest = { choosingImport = false },
+            title = { Text("Import an Anki deck") },
+            text = {
+                Text("Start every word fresh, or bring over your Anki review history so words you know keep their intervals?")
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.keepAnkiHistory = false; choosingImport = false; pickDeck.launch(arrayOf("*/*")) }) { Text("Start fresh") }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.keepAnkiHistory = true; choosingImport = false; pickDeck.launch(arrayOf("*/*")) }) { Text("Keep history") }
+            },
+        )
+    }
 
     vm.importMessage?.let { (title, body) ->
         AlertDialog(

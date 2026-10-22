@@ -87,6 +87,8 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         Reminders.schedule(app, progress.remindersOn)
+        // Learners chose to relearn their Anki deck from scratch: drop progress imported before that choice existed.
+        if (!progress.deckProgressReset) updateProgress(AnkiImport.clearDeckProgress(progress).copy(deckProgressReset = true))
     }
 
     fun now() = System.currentTimeMillis()
@@ -193,7 +195,11 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Anki import ----
 
+    /** Set when the learner picks how to import, read when the file comes back. */
+    var keepAnkiHistory = false
+
     fun importAnki(uri: Uri) {
+        val keepHistory = keepAnkiHistory
         if (importing) return
         importing = true
         viewModelScope.launch {
@@ -202,14 +208,18 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
                 val deck = AnkiImport.deck(collection)
                 withContext(Dispatchers.IO) { decks.save(deck) }
                 Course.install(deck)
-                val (state, report) = AnkiImport.merge(progress, collection)
-                updateProgress(state)
                 deckVersion++
                 track = Track.DECK
                 tab = Tab.LEARN
-                importMessage = "Imported ${deck.name}" to buildString {
-                    append("${report.words} words added as the Anki track.")
-                    if (report.studied > 0) append(" Your Anki history carried over: ${report.studied} studied, ${report.mastered} mastered.")
+                if (keepHistory) {
+                    val (state, report) = AnkiImport.merge(progress, collection)
+                    updateProgress(state)
+                    importMessage = "Imported ${deck.name}" to buildString {
+                        append("${deck.words.size} words added as the Anki track.")
+                        if (report.studied > 0) append(" Your Anki history carried over: ${report.studied} studied, ${report.mastered} mastered.")
+                    }
+                } else {
+                    importMessage = "Imported ${deck.name}" to "${deck.words.size} words added as the Anki track. Every word starts fresh from Set 1."
                 }
             } catch (e: AnkiFormatException) {
                 importMessage = "Couldn't import that deck" to (e.message ?: "")
@@ -219,6 +229,14 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
                 importing = false
             }
         }
+    }
+
+    fun resetDeckProgress() = updateProgress(AnkiImport.clearDeckProgress(progress))
+
+    /** Saves the learner's own story for [kanji]; a blank one brings back the built-in mnemonic. */
+    fun setMnemonic(kanji: String, story: String) {
+        val text = story.trim()
+        updateProgress(progress.copy(mnemonics = if (text.isEmpty()) progress.mnemonics - kanji else progress.mnemonics + (kanji to text)))
     }
 
     fun removeDeck() {
@@ -237,7 +255,9 @@ class KanaViewModel(app: Application) : AndroidViewModel(app) {
         Reminders.schedule(getApplication<Application>(), on)
     }
 
-    fun resetProgress() = updateProgress(ProgressState(dailyGoal = progress.dailyGoal, remindersOn = progress.remindersOn))
+    fun resetProgress() = updateProgress(
+        ProgressState(dailyGoal = progress.dailyGoal, remindersOn = progress.remindersOn, mnemonics = progress.mnemonics, deckProgressReset = true),
+    )
 
     private fun updateProgress(state: ProgressState) {
         progress = state
